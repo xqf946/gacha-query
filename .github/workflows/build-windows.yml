@@ -1,0 +1,65 @@
+name: build-windows
+
+# 手动触发：Actions 页面 → build-windows → Run workflow。完成后在这次运行的页面底部下载 GenshinWishLog。
+# 打版本标签（例如 v0.1.0）时，还会把 exe 挂到 Releases 页面，得到一个固定的下载链接。
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # 仅用于在打标签时创建 Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 在真正的 Windows 上跑一遍全部测试（路径、换行符等问题只会在 Windows 上暴露）
+      - name: Run tests
+        run: python -m unittest discover -s . -p "test_*.py" -t .
+
+      - name: Build exe
+        run: |
+          pip install pyinstaller
+          pyinstaller --noconfirm --clean --onefile --name GenshinWishLog --add-data "wishlog/static;wishlog/static" run.py
+
+      # 真的把打好的 exe 跑起来，确认页面能打开，再放行
+      - name: Smoke-test the exe
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "smoke-data"
+          $p = Start-Process -FilePath ".\dist\GenshinWishLog.exe" `
+            -ArgumentList "--no-browser", "--port", "8765", "--data-dir", $data `
+            -PassThru -WindowStyle Hidden
+          $ok = $false
+          foreach ($i in 1..60) {
+            Start-Sleep -Milliseconds 500
+            try {
+              $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/" -TimeoutSec 2
+              $state = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/api/state" -TimeoutSec 2
+              if ($page.StatusCode -eq 200 -and $page.Content -match "renderEmpty" -and $state.Content -match "uids") {
+                $ok = $true
+                break
+              }
+            } catch { }
+          }
+          taskkill /F /T /PID $p.Id | Out-Null
+          if (-not $ok) { throw "The built exe did not serve the page." }
+          Write-Host "Smoke test passed."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GenshinWishLog
+          path: dist/GenshinWishLog.exe
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/GenshinWishLog.exe --title "${{ github.ref_name }}" --generate-notes

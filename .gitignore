@@ -1,0 +1,9 @@
+# 你自己的抽卡记录，绝不能上传
+data/
+
+# 打包产物和缓存
+dist/
+build/
+*.spec
+__pycache__/
+*.pyc

@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原神抽卡记录</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #23221f; --muted: #6f6c64; --line: #e4e1d8;
+    --accent: #3b5bdb; --accent-ink: #ffffff;
+    --r5: #b7791f; --r5-bg: #fbf0d9; --r4: #7048c7; --r4-bg: #efe8fb; --r3: #5d6b7a;
+    --good: #2f855a; --warn: #b7791f; --bad: #c53030; --track: #ece9e0;
+    --ok-bg: #e6f4ea; --err-bg: #fdeaea; --info-bg: #e8eefc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --card: #202024; --ink: #ecebe6; --muted: #9b988f; --line: #33333a;
+      --accent: #748ffc; --accent-ink: #11131a;
+      --r5: #f2c14e; --r5-bg: #3a3119; --r4: #b79cf5; --r4-bg: #2d2640; --r3: #8d9aa8;
+      --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
+      --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; }
+  button, select, input {
+    font: inherit; color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .55; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  #status { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; display: none; white-space: pre-line; }
+  #status.show { display: block; }
+  #status.info { background: var(--info-bg); } #status.ok { background: var(--ok-bg); } #status.error { background: var(--err-bg); }
+  details.adv { margin-bottom: 14px; color: var(--muted); }
+  details.adv summary { cursor: pointer; width: fit-content; }
+  details.adv .fields { display: grid; gap: 8px; margin-top: 10px; }
+  details.adv label { display: grid; gap: 4px; font-size: 13px; }
+  details.adv input { width: 100%; }
+  .empty h2 { margin: 0 0 8px; font-size: 18px; }
+  .empty ol { padding-left: 20px; margin: 10px 0; }
+  .empty li { margin: 4px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+  .tab { border-radius: 999px; padding: 6px 14px; }
+  .tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .tab small { opacity: .7; margin-left: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { padding: 12px 14px; }
+  .stat .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { color: var(--muted); font-size: 13px; }
+  .pity { margin-bottom: 14px; }
+  .pity .row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .bar { position: relative; height: 10px; border-radius: 6px; background: var(--track); overflow: hidden; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--good); }
+  .bar > i.warn { background: var(--warn); } .bar > i.bad { background: var(--bad); }
+  .pity .bar { overflow: visible; }
+  .pity .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted); opacity: .6; }
+  h2.sec { font-size: 16px; margin: 20px 0 10px; }
+  .five { display: grid; gap: 2px; }
+  .five .item { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 44px; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .five .item:last-child { border-bottom: 0; }
+  .five .name { font-weight: 600; }
+  .five .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
+  .five .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .five .num.good { color: var(--good); } .five .num.warn { color: var(--warn); } .five .num.bad { color: var(--bad); }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; font-weight: 500; }
+  .filters { display: flex; gap: 8px; margin-bottom: 8px; }
+  .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tr.r5 td.nm { color: var(--r5); font-weight: 700; } tr.r5 { background: var(--r5-bg); }
+  tr.r4 td.nm { color: var(--r4); font-weight: 600; } tr.r4 { background: var(--r4-bg); }
+  tr.r3 td.nm { color: var(--r3); }
+  .more { display: block; margin: 12px auto 0; }
+  @media (max-width: 520px) { .five .item { grid-template-columns: 1fr 44px; } .five .bar { grid-column: 1 / -1; order: 3; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>原神抽卡记录</h1>
+    <select id="uid" aria-label="选择 UID" hidden></select>
+    <button id="export-csv" hidden>导出 CSV</button>
+    <button id="export-json" hidden>导出 JSON</button>
+    <button id="sync" class="primary">更新记录</button>
+  </header>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <details class="adv">
+    <summary>高级：自动找不到时手动指定</summary>
+    <div class="fields">
+      <label>游戏安装目录（里面有 YuanShen.exe 的文件夹）
+        <input id="game-dir" placeholder="例如 D:\Genshin Impact\Genshin Impact Game" autocomplete="off">
+      </label>
+      <label>或者直接粘贴祈愿链接（填了这个就不去读游戏缓存）
+        <input id="manual-url" placeholder="https://public-operation-hk4e.mihoyo.com/gacha_info/api/getGachaLog?..." autocomplete="off">
+      </label>
+      <span class="muted">祈愿链接相当于一把 24 小时有效的钥匙，别发给不信任的人。</span>
+    </div>
+  </details>
+
+  <main id="content"></main>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+
+// 所有来自接口的文字都经 textContent 写入，不拼 HTML
+function el(tag, props = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v === true) node.setAttribute(k, "");
+    else if (v !== false && v != null) node.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) node.append(kid instanceof Node ? kid : document.createTextNode(kid));
+  return node;
+}
+
+const state = { uid: null, data: null, pool: "301", filter: "all", shown: 100 };
+const PAGE = 100;
+
+class Offline extends Error {}
+
+async function api(path, options) {
+  let res;
+  try { res = await fetch(path, options); } catch { throw new Offline(); }
+  const body = await res.json();
+  return { ok: res.ok, status: res.status, body };
+}
+
+// 页面是文件直接打开的，或者黑色窗口被关掉后，都会连不上后台程序
+function onFatal(e) {
+  setRunning(false);
+  if (e instanceof Offline) renderOffline(); else setStatus("error", `出错了：${e.message}`);
+}
+
+function renderOffline() {
+  const fileMode = !location.protocol.startsWith("http");  // 直接打开文件时是 file: 等，不是 http:
+  $("#sync").disabled = true;
+  $("#uid").hidden = $("#export-csv").hidden = $("#export-json").hidden = true;
+  setStatus("error", fileMode
+    ? "现在打开的是网页文件本身，程序还没有启动，所以什么都显示不出来。"
+    : "连不上后台程序，它可能已经退出了（黑色窗口是不是被关掉了？）。");
+  $("#content").replaceChildren(el("section", { class: "card empty" },
+    el("h2", {}, "需要先启动程序"),
+    el("p", {}, "这个页面不能直接双击打开，要先启动程序，再由程序自动打开浏览器："),
+    el("ol", {},
+      el("li", {}, "Windows：双击文件夹里的「启动.bat」"),
+      el("li", {}, "Mac：双击文件夹里的「启动.command」"),
+      el("li", {}, "等浏览器自动弹出页面，地址类似 http://127.0.0.1:8765/ 。用完后关掉黑色窗口即可退出。"),
+    ),
+    el("p", { class: "muted" }, "如果黑色窗口提示找不到 Python，请先安装 Python 3（python.org），Windows 安装时要勾选 “Add python.exe to PATH”。"),
+  ));
+}
+
+function setStatus(kind, text) {
+  const box = $("#status");
+  box.className = text ? `show ${kind}` : "";
+  box.textContent = text || "";
+}
+
+// ---------- 加载 ----------
+async function init() {
+  const { body } = await api("/api/state");
+  fillUids(body.uids);
+  if (body.sync.state === "running") { setRunning(true); poll(); }
+  if (state.uid) await loadWishes(); else renderEmpty();
+}
+
+function fillUids(uids) {
+  const select = $("#uid");
+  select.replaceChildren(...uids.map((u) => el("option", { value: u }, `UID ${u}`)));
+  const remembered = safeGet("uid");
+  state.uid = uids.includes(state.uid) ? state.uid : (uids.includes(remembered) ? remembered : uids[0] || null);
+  if (state.uid) select.value = state.uid;
+  select.hidden = uids.length < 2;
+  $("#export-csv").hidden = $("#export-json").hidden = !state.uid;
+}
+
+async function loadWishes() {
+  const { ok, body } = await api(`/api/wishes?uid=${encodeURIComponent(state.uid)}`);
+  if (!ok) { setStatus("error", body.error || "读取记录失败"); return; }
+  state.data = body;
+  state.shown = PAGE;
+  if (!body.pools.some((p) => p.key === state.pool)) state.pool = body.pools[0].key;
+  render();
+}
+
+// ---------- 更新 ----------
+function setRunning(running) {
+  const btn = $("#sync");
+  btn.disabled = running;
+  btn.textContent = running ? "更新中…" : "更新记录";
+}
+
+async function startSync() {
+  setRunning(true);
+  setStatus("info", "正在开始…");
+  try {
+    const { status, body } = await api("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: $("#manual-url").value, game_dir: $("#game-dir").value }),
+    });
+    if (status === 202 || status === 409) poll();
+    else { setRunning(false); setStatus("error", body.error || "无法开始更新"); }
+  } catch (e) { onFatal(e); }
+}
+
+async function poll() {
+  try {
+    const { body } = await api("/api/sync/status");
+    if (body.state === "running") {
+      setStatus("info", body.message);
+      setTimeout(poll, 600);
+      return;
+    }
+    setRunning(false);
+    if (body.state === "error") { setStatus("error", body.message); return; }
+    setStatus("ok", body.message);
+    const { body: st } = await api("/api/state");
+    if (body.uid) state.uid = body.uid;
+    fillUids(st.uids);
+    safeSet("uid", state.uid);
+    await loadWishes();
+  } catch (e) { onFatal(e); }
+}
+
+// ---------- 渲染 ----------
+function renderEmpty() {
+  $("#content").replaceChildren(el("section", { class: "card empty" },
+    el("h2", {}, "还没有抽卡记录"),
+    el("p", {}, "第一次使用，照下面做一遍："),
+    el("ol", {},
+      el("li", {}, "打开原神，进入「祈愿」→ 左下角「历史记录」，随便点开一个卡池翻一翻。"),
+      el("li", {}, "回到这里，点右上角的「更新记录」。"),
+      el("li", {}, "几秒到几十秒后，记录就会出现在这里，并保存在本机，下次可以继续累加。"),
+    ),
+    el("p", { class: "muted" }, "官方只保留最近半年的记录，所以建议隔一阵更新一次，这样更早的记录也会被攒下来。"),
+  ));
+}
+
+function render() {
+  const pool = state.data.pools.find((p) => p.key === state.pool);
+  $("#content").replaceChildren(renderTabs(), pool.total ? renderPool(pool) : el("p", { class: "muted" }, "这个卡池还没有记录。"));
+}
+
+function renderTabs() {
+  return el("div", { class: "tabs", role: "tablist" }, state.data.pools.map((p) =>
+    el("button", {
+      class: "tab", role: "tab", "aria-selected": p.key === state.pool ? "true" : "false",
+      onclick: () => { state.pool = p.key; state.filter = "all"; state.shown = PAGE; render(); },
+    }, p.name, el("small", {}, String(p.total)))));
+}
+
+function pityLevel(pool, pity) {
+  if (!pool.soft_pity) return "good";
+  if (pity >= pool.soft_pity) return "bad";
+  return pity > Math.round(pool.soft_pity * 0.75) ? "warn" : "good";
+}
+
+function stat(label, value) {
+  return el("div", { class: "card stat" }, el("div", { class: "v" }, String(value)), el("div", { class: "k" }, label));
+}
+
+function renderPool(pool) {
+  const rate = pool.total ? ((pool.five_count / pool.total) * 100).toFixed(2) + "%" : "-";
+  const cards = [
+    stat("总抽数", pool.total),
+    stat(`五星（${rate}）`, pool.five_count),
+    stat("四星", pool.four_count),
+    stat("五星平均抽数", pool.avg_pity5 ?? "-"),
+    stat("约消耗原石", pool.primogems.toLocaleString()),
+  ];
+  if (pool.key === "301") cards.push(stat("出过常驻角色", pool.standard_count));
+
+  const parts = [el("div", { class: "stats" }, cards)];
+  if (pool.hard_pity) parts.push(renderPity(pool));
+  parts.push(renderFiveStars(pool), renderTable(pool));
+  if (state.data.updated_at) {
+    parts.push(el("p", { class: "muted" }, `本地记录最近一次新增：${state.data.updated_at.replace("T", " ")}`));
+  }
+  return el("div", {}, parts);
+}
+
+function renderPity(pool) {
+  const cur = pool.current_pity5;
+  const level = pityLevel(pool, cur);
+  const left = pool.hard_pity - cur;
+  return el("section", { class: "card pity" },
+    el("div", { class: "row" },
+      el("span", {}, `距离上一个五星已抽 `, el("b", {}, String(cur)), " 抽"),
+      el("span", { class: "muted" }, `距硬保底还有 ${left} 抽 · 四星已垫 ${pool.current_pity4} 抽`)),
+    el("div", { class: "bar", role: "img", "aria-label": `已垫 ${cur} / ${pool.hard_pity}` },
+      el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (cur / pool.hard_pity) * 100)}%` }),
+      el("span", { class: "tick", title: `约 ${pool.soft_pity} 抽起概率大幅提升`, style: `left:${(pool.soft_pity / pool.hard_pity) * 100}%` })),
+  );
+}
+
+function renderFiveStars(pool) {
+  const fives = pool.records.filter((r) => r.rank === 5);
+  if (!fives.length) return el("p", { class: "muted" }, "这个卡池还没出过五星。");
+  const cap = pool.hard_pity || Math.max(...fives.map((r) => r.pity));
+  return el("section", {},
+    el("h2", { class: "sec" }, "五星记录（从新到旧）"),
+    el("div", { class: "card five" }, fives.map((r) => {
+      const level = pityLevel(pool, r.pity);
+      return el("div", { class: "item" },
+        el("span", { class: "name" }, r.name,
+          r.standard ? el("span", { class: "tag", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "常驻") : "",
+          el("span", { class: "time" }, r.time)),
+        el("div", { class: "bar" }, el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (r.pity / cap) * 100)}%` })),
+        el("span", { class: `num ${level}` }, String(r.pity)));
+    })));
+}
+
+function renderTable(pool) {
+  const rows = pool.records.filter((r) => state.filter === "all" || (state.filter === "5" ? r.rank === 5 : r.rank >= 4));
+  const shown = rows.slice(0, state.shown);
+  const filterBtn = (key, label) => el("button", {
+    "aria-pressed": state.filter === key ? "true" : "false",
+    onclick: () => { state.filter = key; state.shown = PAGE; render(); },
+  }, label);
+  return el("section", {},
+    el("h2", { class: "sec" }, "全部记录"),
+    el("div", { class: "filters" }, filterBtn("all", "全部"), filterBtn("4", "四星及以上"), filterBtn("5", "只看五星")),
+    el("div", { class: "card tablewrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["#", "时间", "名称", "类别", "星级", "垫抽"].map((h) => el("th", {}, h)))),
+      el("tbody", {}, shown.map((r) => el("tr", { class: `r${r.rank}` },
+        el("td", {}, String(r.n)), el("td", {}, r.time), el("td", { class: "nm" }, r.name),
+        el("td", {}, r.item_type), el("td", {}, "★".repeat(r.rank)), el("td", {}, r.pity ?? "")))))),
+    rows.length > shown.length
+      ? el("button", { class: "more", onclick: () => { state.shown += PAGE; render(); } }, `显示更多（还有 ${rows.length - shown.length} 条）`)
+      : "");
+}
+
+// ---------- 其他 ----------
+function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 隐私模式下可能不可用，忽略 */ } }
+
+$("#sync").addEventListener("click", startSync);
+$("#uid").addEventListener("change", (e) => { state.uid = e.target.value; safeSet("uid", state.uid); loadWishes(); });
+$("#export-csv").addEventListener("click", () => { location.href = `/api/export?uid=${state.uid}&fmt=csv`; });
+$("#export-json").addEventListener("click", () => { location.href = `/api/export?uid=${state.uid}&fmt=json`; });
+
+init().catch(onFatal);
+</script>
+</body>
+</html>
