@@ -24,8 +24,8 @@ from urllib.parse import parse_qs, urlparse
 
 from ..client import ApiError, AuthExpired, InvalidUrl, NetworkError
 from ..locate import (
-    GameNotFound, LocateError, default_drive_roots, describe_url, explain_read_failure,
-    mask_path, read_file_shared,
+    SCAN_BUDGET, GameNotFound, LocateError, default_drive_roots, describe_url,
+    explain_read_failure, mask_path, read_file_shared, scan, search_folders,
 )
 from .base import STARS, Game, Pool, Standard
 
@@ -127,7 +127,7 @@ def parse_record_url(url: str) -> WuwaAuth:
 _CLIENT_LOG = "Client/Saved/Logs/Client.log"
 _GAME_DIR = "Wuthering Waves Game"
 _SEARCH_BASES = (
-    "", "Program Files", "Program Files (x86)", "Games", "Game", "Kuro", "KuroGames",
+    "Program Files", "Program Files (x86)", "Games", "Game", "Kuro", "KuroGames",
     "Steam", "SteamLibrary", "Program Files (x86)/Steam", "Program Files/Steam",
 )
 _SEARCH_PATTERNS = (
@@ -151,7 +151,7 @@ def resolve_client_log(path) -> Path | None:
     return next((c for c in [*direct, *nested] if c.is_file()), None)
 
 
-def find_client_log(explicit=None, drive_roots=None) -> Path:
+def find_client_log(explicit=None, drive_roots=None, budget: float = SCAN_BUDGET) -> Path:
     if explicit:
         found = resolve_client_log(explicit)
         if found:
@@ -161,11 +161,12 @@ def find_client_log(explicit=None, drive_roots=None) -> Path:
             "请选择游戏安装目录（里面有 Wuthering Waves Game 文件夹的那个文件夹）。"
         )
     found_logs: list[Path] = []
+    deadline = time.monotonic() + budget
     for root in drive_roots if drive_roots is not None else default_drive_roots():
-        for base in _SEARCH_BASES:
-            folder = Path(root) / base if base else Path(root)
-            for pattern in _SEARCH_PATTERNS:
-                found_logs.extend(p for p in folder.glob(pattern) if p.is_file())
+        # 盘符根目录只用以字面名字开头的写法（直接叫 Wuthering Waves 的文件夹），不用通配符，免得扫进系统目录
+        at_root = tuple(pattern for pattern in _SEARCH_PATTERNS if not pattern.startswith("*"))
+        for folders, patterns in (([Path(root)], at_root), (search_folders(root, _SEARCH_BASES), _SEARCH_PATTERNS)):
+            found_logs.extend(p for p in scan(folders, patterns, deadline) if p.is_file())
     if not found_logs:
         raise GameNotFound(
             "没能自动找到鸣潮。如果已经安装，请在“高级”里手动选择游戏安装目录"

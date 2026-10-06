@@ -148,6 +148,15 @@ class FindingTheLog(unittest.TestCase):
             wuwa.find_client_log(self.root / "nope")
         self.assertNotIsInstance(ctx.exception, GameNotFound)
 
+    def test_system_folders_are_not_searched_and_the_time_budget_is_respected(self):
+        self.make_log("D", "Windows", "Wuthering Waves", "Wuthering Waves Game")     # 在系统目录里：不该被找到
+        with self.assertRaises(GameNotFound):
+            wuwa.find_client_log(drive_roots=[self.root / "D"])
+        log = self.make_log("D", "MyGames", "Wuthering Waves", "Wuthering Waves Game")
+        self.assertEqual(wuwa.find_client_log(drive_roots=[self.root / "D"]), log)
+        with self.assertRaises(GameNotFound):
+            wuwa.find_client_log(drive_roots=[self.root / "D"], budget=-1)
+
     def test_nothing_installed_is_game_not_found(self):
         with self.assertRaises(GameNotFound):
             wuwa.find_client_log(drive_roots=[self.root / "D"])

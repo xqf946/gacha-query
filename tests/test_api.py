@@ -6,16 +6,18 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.fakes import (
     VALID_KEY, WUWA_URL, FakeApi, FakeWuwaApi, encrypt_client_log, game_url, make_records,
     wish_url, wuwa_item, wuwa_log_line,
 )
 from tests.test_locate import blob, build_game, write_cache
-from wishlog import __version__
+from wishlog import __version__, locate
 from wishlog.api import Api
 from wishlog.client import Client
 from wishlog.games import GAMES, GENSHIN, HSR, ZZZ
+from wishlog.games import wuwa
 from wishlog.games.wuwa import WuwaClient
 from wishlog.job import SyncJob
 from wishlog.settings import Settings
@@ -42,6 +44,14 @@ class ApiTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.data = self.root / "data"
+
+        # “自动查找游戏”在测试里一律找不到：不能去扫运行测试的这台机器的真实硬盘
+        # （在装了很多软件的 Windows 机器上，扫一遍要好几秒，会让测试忽快忽慢）
+        for target in (mock.patch.object(locate, "default_drive_roots", return_value=[]),
+                       mock.patch.object(locate, "default_log_paths", return_value=[]),
+                       mock.patch.object(wuwa, "default_drive_roots", return_value=[])):
+            target.start()
+            self.addCleanup(target.stop)
 
         # 每个游戏一个假接口
         self.fakes = {

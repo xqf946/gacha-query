@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import string
+import time
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
 
@@ -17,17 +18,24 @@ from urllib.parse import parse_qsl, urlparse
 # 所以不写死，扫描 LocalLow\miHoYo 下所有子文件夹里的这两种日志，再从内容里找路径。
 LOG_FILE_NAMES = ("output_log.txt", "Player.log")
 
-# 日志里找不到时，在各个盘符下这些常见位置里找；每个位置下再往里找一两层，
-# 这样游戏文件夹叫什么（Genshin Impact Game / Star Rail Game ……）都无所谓。
+# 日志里找不到时，在各个盘符下找。先试这些常见安装位置，再试盘符根目录下所有非系统文件夹；
+# 每个位置下再往里找一两层，这样游戏文件夹叫什么（Genshin Impact Game / Star Rail Game ……）都无所谓。
 SEARCH_BASES = (
-    "",
     "Program Files",
+    "Program Files (x86)",
     "Games",
     "miHoYo Launcher/games",
     "HoYoPlay/games",
     "Program Files/miHoYo Launcher/games",
     "Program Files/HoYoPlay/games",
 )
+# 盘符根目录下这些文件夹里不会有游戏，而且又大又慢，扫描时直接跳过。
+SYSTEM_DIRS = frozenset({
+    "windows", "users", "programdata", "$recycle.bin", "system volume information",
+    "recovery", "perflogs", "msocache", "documents and settings", "config.msi",
+})
+# 自动查找最多花这么多秒。装得很满的电脑上全盘找太慢，超时就当作没找到，让用户手动选。
+SCAN_BUDGET = 6.0
 
 _URL_RE = re.compile(rb"https://[\x21-\x7e]+")
 _AUTHKEY_RE = re.compile(r"authkey=([^&#]+)")
@@ -94,7 +102,35 @@ def default_drive_roots() -> list[Path]:
     return [d for d in drives if d.exists()]
 
 
-def find_data_dir(data_dir_name: str, explicit=None, log_paths=None, drive_roots=None) -> Path:
+def search_folders(root, bases=SEARCH_BASES) -> list:
+    """一个盘符下值得找的文件夹：常见安装位置在前，再加盘符根目录下所有非系统文件夹。
+
+    盘符根目录本身不在其中：在根目录下用通配符会直接钻进 Windows 这类系统目录。
+    """
+    root = Path(root)
+    folders = [root / base for base in bases]
+    try:
+        tops = sorted(p for p in root.iterdir() if p.is_dir() and p.name.lower() not in SYSTEM_DIRS)
+    except OSError:
+        tops = []
+    folders += [p for p in tops if p not in folders]
+    return folders
+
+
+def scan(folders, patterns, deadline: float):
+    """在每个文件夹下依次按 patterns 找，超过 deadline 就停。找不到的、没权限的位置直接跳过。"""
+    for folder in folders:
+        for pattern in patterns:
+            if time.monotonic() > deadline:
+                return
+            try:
+                yield from folder.glob(pattern)
+            except OSError:
+                continue
+
+
+def find_data_dir(data_dir_name: str, explicit=None, log_paths=None, drive_roots=None,
+                  budget: float = SCAN_BUDGET) -> Path:
     """按“手动指定 → 游戏日志 → 常见安装位置”的顺序查找游戏数据目录。"""
     if explicit:
         found = resolve_data_dir(explicit, data_dir_name)
@@ -114,13 +150,12 @@ def find_data_dir(data_dir_name: str, explicit=None, log_paths=None, drive_roots
             if Path(candidate).is_dir():
                 return Path(candidate)
 
+    deadline = time.monotonic() + budget
+    patterns = (data_dir_name, f"*/{data_dir_name}", f"*/*/{data_dir_name}")
     for root in drive_roots if drive_roots is not None else default_drive_roots():
-        for base in SEARCH_BASES:
-            folder = Path(root) / base if base else Path(root)
-            for pattern in (f"*/{data_dir_name}", f"*/*/{data_dir_name}"):
-                for candidate in sorted(folder.glob(pattern)):
-                    if candidate.is_dir():
-                        return candidate
+        for candidate in scan(search_folders(root), patterns, deadline):
+            if candidate.is_dir():
+                return candidate
 
     raise GameNotFound(
         "没能自动找到这个游戏。如果已经安装，请先启动一次游戏，或者在“高级”里手动选择游戏安装目录。"

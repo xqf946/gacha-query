@@ -100,6 +100,26 @@ class FindDataDir(unittest.TestCase):
         self.assertEqual(locate.find_data_dir("StarRail_Data", log_paths=[], drive_roots=[drive]), hsr)
         self.assertEqual(locate.find_data_dir("ZenlessZoneZero_Data", log_paths=[], drive_roots=[drive]), zzz)
 
+    def test_system_folders_are_never_searched(self):
+        drive = Path(self.tmp.name) / "G"
+        hidden = [drive / "Windows" / "System32" / "YuanShen_Data",
+                  drive / "Users" / "x" / "YuanShen_Data",
+                  drive / "$Recycle.Bin" / "x" / "YuanShen_Data"]
+        for path in hidden:
+            path.mkdir(parents=True)
+        with self.assertRaises(locate.GameNotFound):
+            locate.find_data_dir("YuanShen_Data", log_paths=[], drive_roots=[drive])
+        real = drive / "MyGames" / "YuanShen_Data"
+        real.mkdir(parents=True)
+        self.assertEqual(locate.find_data_dir("YuanShen_Data", log_paths=[], drive_roots=[drive]), real)
+
+    def test_the_scan_gives_up_when_its_time_budget_runs_out(self):
+        drive = Path(self.tmp.name) / "H"
+        (drive / "Games" / "A" / "YuanShen_Data").mkdir(parents=True)
+        with self.assertRaises(locate.GameNotFound):     # 预算已经用完：哪怕游戏就在那里，也不再继续扫
+            locate.find_data_dir("YuanShen_Data", log_paths=[], drive_roots=[drive], budget=-1)
+        self.assertTrue(locate.find_data_dir("YuanShen_Data", log_paths=[], drive_roots=[drive]).is_dir())
+
     def test_game_not_found_is_a_locate_error_too(self):
         self.assertTrue(issubclass(locate.GameNotFound, locate.LocateError))
 
