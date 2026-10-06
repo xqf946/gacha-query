@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -24,7 +25,8 @@ class DefaultDataDir(unittest.TestCase):
     def test_installed_app_falls_back_to_home_when_localappdata_is_missing(self):
         with mock.patch.object(sys, "frozen", True, create=True), \
                 mock.patch.object(sys, "platform", "win32"), \
-                mock.patch.dict("os.environ", {}, clear=True):
+                mock.patch.dict("os.environ"):   # 退出时自动还原；只去掉这一项，别的（如用户主目录）保留
+            os.environ.pop("LOCALAPPDATA", None)
             self.assertEqual(
                 default_data_dir(),
                 Path.home() / "AppData" / "Local" / "GenshinWishLog" / "data",
