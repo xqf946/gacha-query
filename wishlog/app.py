@@ -151,7 +151,7 @@ def run(data_dir=None, game_dir=None, demo=False, selftest_out=None, debug=False
     api = Api(store, SyncJob(store, default_game_dir=game_dir or None), data_dir, dialogs)
     window = webview.create_window(
         TITLE, url=str(INDEX), js_api=api,
-        width=1100, height=780, min_size=(860, 560),
+        width=1000, height=680, min_size=(820, 520),  # 留出余量：常见笔记本屏幕只有 1366×768
         background_color="#17171a", text_select=True,
     )
     dialogs.window = window
