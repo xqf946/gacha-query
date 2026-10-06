@@ -68,7 +68,7 @@ class Api:
         doc = self._store(game.key).load(uid)
         return {
             "game": game.meta(), "uid": uid, "updated_at": doc["updated_at"],
-            "pools": analyze(game, doc["records"]),
+            "pools": analyze(game, doc["records"], (doc.get("meta") or {}).get("pool_names")),
         }
 
     def app_info(self) -> dict:

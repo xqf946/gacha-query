@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 from tests.fakes import make_records
-from wishlog.games import GENSHIN, HSR, WUWA, ZZZ
+from wishlog.games import ARKNIGHTS, ENDFIELD, GENSHIN, HSR, WUWA, ZZZ
 from wishlog.settings import Settings
-from wishlog.stats import analyze, analyze_pool
+from wishlog.stats import analyze, analyze_pool, display_name
 from wishlog.store import Store, migrate_legacy
 
 
@@ -47,6 +47,38 @@ class StoreTests(unittest.TestCase):
         files = sorted(p.name for p in (Path(self.tmp.name) / "data").iterdir())
         self.assertEqual(files, ["100000001.json"])
         json.loads((Path(self.tmp.name) / "data" / "100000001.json").read_text(encoding="utf-8"))
+
+
+class StoreExtras(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(Path(self.tmp.name))
+
+    def test_optional_fields_are_kept_and_unknown_ones_are_dropped(self):
+        record = {**rec(1, "special", 6), "free": "1", "pool_id": "special_1_0_3", "secret": "should-not-be-stored"}
+        self.store.merge("100000001", [record])
+        saved = self.store.load("100000001")["records"][0]
+        self.assertEqual((saved["free"], saved["pool_id"]), ("1", "special_1_0_3"))
+        self.assertNotIn("secret", saved)
+
+    def test_empty_optional_fields_are_not_stored(self):
+        self.store.merge("100000001", [{**rec(1, "special", 6), "free": "", "pool_id": ""}])
+        saved = self.store.load("100000001")["records"][0]
+        self.assertNotIn("free", saved)
+        self.assertNotIn("pool_id", saved)
+
+    def test_meta_is_saved_merged_and_does_not_count_as_new_records(self):
+        self.store.merge("100000001", [rec(1, "normal", 5)], meta={"pool_names": {"normal": "标准寻访"}})
+        stamp = self.store.load("100000001")["updated_at"]
+        self.assertEqual(self.store.merge("100000001", [], meta={"pool_names": {"normal": "标准寻访", "x": "新类别"}}), 0)
+        self.assertEqual(self.store.meta("100000001")["pool_names"]["x"], "新类别")
+        self.assertEqual(self.store.load("100000001")["updated_at"], stamp)       # “最近一次新增”不能被只改了名字的更新刷新
+
+    def test_an_account_without_meta_has_an_empty_one(self):
+        self.store.merge("100000001", [rec(1, "301", 5)])
+        self.assertEqual(self.store.meta("100000001"), {})
+        self.assertEqual(self.store.meta("999"), {})
 
 
 class MigrateLegacy(unittest.TestCase):
@@ -185,6 +217,74 @@ class StatsTests(unittest.TestCase):
     def test_games_without_a_known_standard_list_never_flag_anything(self):
         pools = analyze(HSR, [rec(1, "11", 5, "姬子")])
         self.assertEqual(sum(p["standard_count"] for p in pools), 0)
+
+    def test_free_pulls_do_not_advance_the_pity_counter_but_do_count_as_pulls(self):
+        records = [{**rec(1, "special", 4), "free": ""}, {**rec(2, "special", 4), "free": "1"},
+                   {**rec(3, "special", 4), "free": "1"}, {**rec(4, "special", 6), "free": ""}]
+        pool = analyze_pool(ENDFIELD, ENDFIELD.pools[0], records)
+        top = next(e for e in pool["records"] if e["tier"] == "top")
+        self.assertEqual(top["pity"], 2)                       # 4 抽里有 2 次免费，只算 2 抽
+        self.assertEqual((pool["total"], pool["free_count"]), (4, 2))
+        self.assertEqual(pool["current_pity_top"], 0)
+
+    def test_a_free_top_pull_does_not_reset_the_counter_and_is_not_averaged(self):
+        records = [rec(1, "special", 4), rec(2, "special", 4), {**rec(3, "special", 6), "free": "1"}, rec(4, "special", 4)]
+        pool = analyze_pool(ENDFIELD, ENDFIELD.pools[0], records)
+        self.assertEqual(pool["current_pity_top"], 3)          # 免费出的六星没有清零保底
+        self.assertIsNone(pool["avg_pity_top"])                # 也不计入平均出货抽数
+        self.assertTrue(next(e for e in pool["records"] if e["tier"] == "top")["free"])
+
+    def test_cost_leaves_out_free_pulls(self):
+        records = [{**rec(1, "301", 3), "free": "1"}, rec(2, "301", 3), rec(3, "301", 3)]
+        self.assertEqual(analyze_pool(GENSHIN, GENSHIN.pools[0], records)["cost"], 2 * 160)
+
+    def test_pity_restarts_when_the_banner_changes_only_for_pools_that_say_so(self):
+        records = [{**rec(1, "weapon_special", 4), "pool_id": "a"}, {**rec(2, "weapon_special", 4), "pool_id": "a"},
+                   {**rec(3, "weapon_special", 4), "pool_id": "b"}]
+        weapon = next(p for p in ENDFIELD.pools if p.key == "weapon_special")
+        self.assertTrue(weapon.reset_on_new_pool)
+        self.assertEqual(analyze_pool(ENDFIELD, weapon, records)["current_pity_top"], 1)
+        shared = [{**rec(1, "special", 4), "pool_id": "a"}, {**rec(2, "special", 4), "pool_id": "b"}]
+        self.assertEqual(analyze_pool(ENDFIELD, ENDFIELD.pools[0], shared)["current_pity_top"], 2)   # 角色池的保底共享
+
+    def test_a_record_without_a_pool_id_never_triggers_a_reset(self):
+        records = [{**rec(1, "weapon_special", 4), "pool_id": "a"}, rec(2, "weapon_special", 4)]
+        weapon = next(p for p in ENDFIELD.pools if p.key == "weapon_special")
+        self.assertEqual(analyze_pool(ENDFIELD, weapon, records)["current_pity_top"], 2)
+
+    def test_dynamic_pools_follow_the_fixed_ones_newest_first_and_use_the_stored_names(self):
+        records = [rec(1, "normal", 2), {**rec(2, "old_fest", 2), "time": "2026-01-01 00:00:01"},
+                   {**rec(3, "new_fest", 2), "time": "2026-09-01 00:00:01"}]
+        pools = analyze(ARKNIGHTS, records, {"old_fest": "限定寻访 旧", "new_fest": "限定寻访 新"})
+        self.assertEqual([p["name"] for p in pools], ["标准寻访", "中坚寻访", "限定寻访 新", "限定寻访 旧"])
+
+    def test_a_dynamic_pool_without_a_stored_name_falls_back_to_its_key(self):
+        pools = analyze(ARKNIGHTS, [rec(1, "mystery_fest", 2)])
+        self.assertEqual(pools[-1]["name"], "mystery_fest")
+
+    def test_games_without_dynamic_pools_ignore_unknown_types(self):
+        self.assertEqual(sum(p["total"] for p in analyze(ENDFIELD, [rec(1, "unknown", 5)])), 0)
+
+    def test_names_wrapped_in_corner_brackets_are_shown_without_them(self):
+        # 官方数据里有的名字带「」、有的不带，显示时统一
+        self.assertEqual(display_name("「墨丘利」"), "墨丘利")
+        self.assertEqual(display_name("『某某』"), "某某")
+        self.assertEqual(display_name("艾瑞儿"), "艾瑞儿")
+        self.assertEqual(display_name("  「墨丘利」 "), "墨丘利")
+
+    def test_only_a_bracket_pair_around_the_whole_name_is_removed(self):
+        for name in ("原初长刃·朴石", "「甲」和「乙」", "「半边", "半边」", "「」", "「「嵌套」」", "A「B」C", ""):
+            self.assertEqual(display_name(name), name.strip(), name)
+
+    def test_the_statistics_show_uniform_names_but_the_stored_records_keep_the_official_ones(self):
+        records = [{**rec(1, "5", 4, "「墨丘利」", "邦布")}, {**rec(2, "5", 4, "艾瑞儿", "邦布")}]
+        pool = analyze_pool(ZZZ, next(p for p in ZZZ.pools if p.key == "5"), records)
+        self.assertEqual([e["name"] for e in pool["records"]], ["艾瑞儿", "墨丘利"])
+        self.assertEqual(records[0]["name"], "「墨丘利」")         # 原始数据没被改
+
+    def test_the_standard_character_check_still_uses_the_official_name(self):
+        records = [rec(1, "1", 5, "凌阳")]
+        self.assertTrue(analyze(WUWA, records)[0]["records"][0]["standard"])
 
     def test_each_game_has_its_own_currency(self):
         for game, label in ((GENSHIN, "原石"), (HSR, "星琼"), (ZZZ, "菲林"), (WUWA, "星声")):

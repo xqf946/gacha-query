@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .games import GENSHIN, HSR, WUWA, ZZZ
+from .games import ARKNIGHTS, ENDFIELD, GENSHIN, HSR, WUWA, ZZZ
+from .games.arknights import record as arknights_record
+from .games.endfield import char_record, weapon_record
 from .games.base import Game
 from .games.wuwa import build_records
 from .store import Store
@@ -29,10 +31,22 @@ _NAMES = {
         "other": [("喜悦之花", "光锥"), ("锋镝", "光锥")],
     },
     "zzz": {
-        "top": [("艾莲", "代理人"), ("雅", "代理人"), ("猫又", "代理人")],
+        "top": [("艾莲", "代理人"), ("雅", "代理人"), ("「墨丘利」", "代理人"), ("猫又", "代理人")],
         "top_weapon": [("深海访客", "音擎"), ("嵌合编译器", "音擎")],
         "second": [("安比", "代理人"), ("珂蕾妲", "代理人"), ("街头巨星", "音擎")],
         "other": [("加农转子", "音擎"), ("钢铁肉垫", "音擎")],
+    },
+    "arknights": {
+        "top": [("银灰", "干员"), ("艾雅法拉", "干员"), ("能天使", "干员"), ("夕", "干员")],
+        "top_weapon": [("棘刺", "干员")],
+        "second": [("拉普兰德", "干员"), ("星熊", "干员"), ("白面鸮", "干员")],
+        "other": [("芬", "干员"), ("香草", "干员"), ("杜林", "干员")],
+    },
+    "endfield": {
+        "top": [("管理员", "角色"), ("莱万汀", "角色"), ("洛茜", "角色")],
+        "top_weapon": [("寻路者道标", "武器"), ("熔铸之剑", "武器")],
+        "second": [("大潘", "角色"), ("陈千语", "角色"), ("蓝闪", "武器")],
+        "other": [("见习者长刀", "武器"), ("学徒手铳", "武器")],
     },
     "wuwa": {
         "top": [("今汐", "角色"), ("长离", "角色"), ("凌阳", "角色"), ("安可", "角色")],
@@ -43,7 +57,8 @@ _NAMES = {
 }
 
 
-def _simulate(rng, game: Game, pool_key: str, count: int, hard: int, soft: int, weapon_pool: bool) -> list:
+def _simulate(rng, game: Game, pool_key: str, count: int, hard: int, soft: int, weapon_pool: bool,
+              other_rank: int | None = None) -> list:
     """按保底规则抽 count 次，返回从旧到新的 (品级, 名字, 类别, 第几抽) 。"""
     ranks, names = game.ranks, _NAMES[game.key]
     pulls, since_top, since_second = [], 0, 0
@@ -59,7 +74,7 @@ def _simulate(rng, game: Game, pool_key: str, count: int, hard: int, soft: int, 
             rank, since_second = ranks.second, 0
             name, kind = rng.choice(names["second"])
         else:
-            rank = ranks.other
+            rank = ranks.other if other_rank is None else other_rank
             name, kind = rng.choice(names["other"])
         pulls.append((rank, name, kind, n))
     return pulls
@@ -96,6 +111,42 @@ def _wuwa_records(rng, plan: list) -> list:
     return records
 
 
+_CHINA = timezone(timedelta(hours=8))
+
+
+def _ms(n: int) -> str:
+    """第 n 抽的毫秒时间戳（十连里的 10 抽同一时刻，和接口一致）。"""
+    when = datetime(2026, 3, 1, 20, 0, 0, tzinfo=_CHINA) + timedelta(days=n // 10 * 2)
+    return str(int(when.timestamp() * 1000))
+
+
+def _arknights_records(rng, plan: list) -> list:
+    """plan: [(卡池类别, 抽数, 每多少抽换一期卡池)]"""
+    records = []
+    for index, (category, count, per_pool) in enumerate(plan):
+        for rank, name, kind, n in _simulate(rng, ARKNIGHTS, category, count, 99, 50, False, other_rank=2):
+            records.append(arknights_record({
+                "poolId": f"{category}_{n // per_pool}", "charId": f"char_{n}", "charName": name,
+                "rarity": rank, "gachaTs": _ms(n + index * 1000), "pos": n % 10}, category))   # 各类别错开时间，真实数据里也不会撞
+    return records
+
+
+def _endfield_records(rng, plan: list) -> list:
+    """plan: [(卡池, 抽数, 硬保底, 软保底, 每多少抽换一期卡池)]；key 以 weapon_ 开头的是武器池。"""
+    records, seq = [], 0
+    for index, (key, count, hard, soft, per_pool) in enumerate(plan):
+        weapon = key.startswith("weapon_")
+        for rank, name, kind, n in _simulate(rng, ENDFIELD, key, count, hard, soft, weapon):
+            seq += 1
+            item = {"kind": "draw", "seqId": str(seq), "gachaTs": _ms(n + index * 1000), "rarity": rank, "isFree": n % 23 == 5 and not weapon,
+                    "poolId": f"{key}_1_0_{n // per_pool}"}
+            if weapon:
+                records.append(weapon_record({**item, "weaponName": name, "weaponId": f"wpn_{n}"}, key))
+            else:
+                records.append(char_record({**item, "charName": name, "charId": f"chr_{n}"}, key))
+    return records
+
+
 def seed(data_dir) -> None:
     """往 data_dir 里写入四个游戏的演示记录（原神、崩铁、绝区零各一个账号，原神再多一个小号）。"""
     root = Path(data_dir)
@@ -116,6 +167,13 @@ def seed(data_dir) -> None:
         ("2", 130, 90, 74, False), ("3", 60, 80, 65, True), ("1", 90, 90, 74, False),
         ("5", 40, 80, 65, False),
     ], base))
+    Store(root / "arknights").merge(
+        DEMO_UID, _arknights_records(rng, [("normal", 260, 50), ("classic", 40, 40), ("spring_fest", 70, 35)]),
+        meta={"pool_names": {"normal": "标准寻访", "classic": "中坚寻访", "spring_fest": "限定寻访 春节"}})
+    Store(root / "endfield").merge(DEMO_UID, _endfield_records(rng, [
+        ("special", 150, 80, 65, 80), ("standard", 60, 80, 65, 60), ("beginner", 20, 10_000, 10_000, 20),
+        ("weapon_special", 70, 40, 10_000, 30), ("weapon_constant", 30, 40, 10_000, 30),
+    ]))
     Store(root / "wuwa").merge(DEMO_UID, _wuwa_records(rng, [
         ("1", 156, 80, 65, False), ("2", 70, 80, 65, True), ("3", 100, 80, 65, False),
         ("5", 50, 50, 10_000, False),

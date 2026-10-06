@@ -14,6 +14,7 @@ class Pool:
     gacha_types: tuple = ()       # 存下来的记录里 gacha_type 取这些值时归入本池；留空就只有 key
     optional: bool = False        # 接口不一定支持（联动池、重映池等）：取不到就跳过，不算失败
     ld: bool = False              # 崩铁联动池要走另一个接口路径
+    reset_on_new_pool: bool = False   # 保底不跨具体卡池继承：记录里的卡池换了，垫抽就从头算
 
     @property
     def types(self) -> tuple:
@@ -40,6 +41,15 @@ class Standard:
     item_types: frozenset = frozenset({"角色"})
 
 
+SIX_STARS = Ranks(  # 明日方舟、终末地：最高六星
+    6, 5, 4,
+    names={6: "六星", 5: "五星", 4: "四星"},
+    marks={6: "★★★★★★", 5: "★★★★★", 4: "★★★★", 3: "★★★"})
+# 明日方舟接口里的稀有度从 0 开始：5 就是六星
+ARKNIGHTS_RANKS = Ranks(
+    5, 4, 3,
+    names={5: "六星", 4: "五星", 3: "四星"},
+    marks={5: "★★★★★★", 4: "★★★★★", 3: "★★★★", 2: "★★★", 1: "★★", 0: "★"})
 STARS = Ranks(5, 4, 3,
               names={5: "五星", 4: "四星", 3: "三星"},
               marks={5: "★★★★★", 4: "★★★★", 3: "★★★"})
@@ -53,7 +63,9 @@ class Game:
 
     def __init__(self, key: str, name: str, short_name: str, pools: tuple, ranks: Ranks,
                  currency: str, hint: str, standard: Standard | None = None,
-                 trust_record_type: bool = True, cost_per_pull: int = 160):
+                 trust_record_type: bool = True, cost_per_pull: int | None = 160,
+                 retention: str = "最近半年", manual_label: str = "", manual_help: str = "",
+                 manual_secret: bool = False, manual_required: bool = False):
         self.key = key
         self.name = name
         self.short_name = short_name
@@ -63,11 +75,20 @@ class Game:
         self.hint = hint                              # 在游戏里怎么打开记录页
         self.standard = standard
         self.trust_record_type = trust_record_type    # False：以请求的卡池为准，不信记录自带的类型
-        self.cost_per_pull = cost_per_pull
+        self.cost_per_pull = cost_per_pull            # None：不估算消耗（货币和免费抽太杂，估不准）
+        self.retention = retention                    # 官方保留多久的记录，用在提示文字里
+        self.manual_label = manual_label              # 「高级」里手动输入框的说明；空表示用默认的“粘贴链接”
+        self.manual_help = manual_help
+        self.manual_secret = manual_secret            # True：输入框按密码显示（令牌）
+        self.manual_required = manual_required        # True：必须手动输入才能更新（没有本地文件可读）
         self._by_type = {t: p for p in pools for t in p.types}
 
     def pool_for_type(self, gacha_type) -> Pool | None:
         return self._by_type.get(str(gacha_type))
+
+    def make_pool(self, key: str, names: dict) -> Pool | None:
+        """记录里出现了没登记过的卡池类型时，动态生成一个（明日方舟的卡池类别会随活动增加）。默认不支持。"""
+        return None
 
     def meta(self) -> dict:
         return {
@@ -76,6 +97,12 @@ class Game:
             "top_name": self.ranks.names[self.ranks.top],
             "second_name": self.ranks.names[self.ranks.second],
             "has_standard": self.standard is not None,
+            "has_cost": self.cost_per_pull is not None,
+            "retention": self.retention,
+            "manual_label": self.manual_label,
+            "manual_help": self.manual_help,
+            "manual_secret": self.manual_secret,
+            "manual_required": self.manual_required,
         }
 
     # ---- 子类实现 ----

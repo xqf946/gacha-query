@@ -135,3 +135,146 @@ class FakeWuwaApi:
             code, message = self.fail_pools[str(pool)]
             return {"code": code, "message": message, "data": []}
         return {"code": 0, "message": "success", "data": list(self.pools.get(str(pool), []))}
+
+
+# ---------- 终末地 ----------
+EF_TOKEN = "U8TOKEN-abc123"
+EF_LINK = (
+    "https://ef-webview.hypergryph.com/page/gacha_char?pool_id=special_1_0_3&platform=Windows"
+    f"&channel=1&subChannel=1&lang=zh-cn&server=1&u8_token={EF_TOKEN}"
+)
+
+
+def ef_char(seq: int, name: str, rarity: int, pool_id: str = "special_1_0_3", ts: int = 1770439342803,
+            free: bool = False, kind: str = "draw") -> dict:
+    if kind != "draw":
+        return {"kind": kind, "nameText": "寻访情报书", "poolId": pool_id, "poolName": "某池",
+                "gachaTs": str(ts + seq), "seqId": str(seq)}
+    return {"kind": "draw", "nameText": name, "poolId": pool_id, "poolName": "某池", "charId": f"chr_{seq}",
+            "charName": name, "rarity": rarity, "isFree": free, "isNew": False,
+            "gachaTs": str(ts + seq), "seqId": str(seq)}
+
+
+def ef_weapon(seq: int, name: str, rarity: int, pool_id: str = "weponbox_1_0_1", ts: int = 1769565182199) -> dict:
+    return {"kind": "draw", "nameText": name, "poolId": pool_id, "poolName": "某武器池", "weaponId": f"wpn_{seq}",
+            "weaponName": name, "weaponType": "E_WeaponType_Lance", "rarity": rarity, "isNew": False,
+            "gachaTs": str(ts + seq), "seqId": str(seq)}
+
+
+class FakeEndfield:
+    """模拟终末地官方接口：transport(method, url, headers, body) -> 已解析的 JSON。
+
+    chars：{"special": [...从新到旧...]}；weapons：{poolId: [...从新到旧...]}。
+    """
+
+    def __init__(self, chars=None, weapons=None, token: str = EF_TOKEN, uid: str = "987654321", page_size: int = 3):
+        self.chars = chars or {}
+        self.weapons = weapons or {}
+        self.token, self.uid, self.page_size = token, uid, page_size
+        self.calls = []                 # (方法, 主机, 路径, 查询参数, 请求头, 请求体)
+        self.fail_pool = {}             # {"rerun": (code, msg)}
+        self.role_status = 0
+        self.role_uid = None            # 默认用 uid；设成 "" 可以模拟接口没给 uid
+
+    def _page(self, items: list, seq_id):
+        start = 0
+        if seq_id:
+            start = next((i + 1 for i, it in enumerate(items) if it["seqId"] == seq_id), len(items))
+        page = items[start:start + self.page_size]
+        return {"code": 0, "msg": "", "data": {"list": page, "hasMore": start + self.page_size < len(items)}}
+
+    def __call__(self, method, url, headers, body):
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        self.calls.append((method, parsed.hostname, parsed.path, query, dict(headers), body))
+        if parsed.hostname == "u8.hypergryph.com":
+            if not body or body.get("token") != self.token:
+                return {"status": 3, "msg": "token invalid"}
+            uid = self.uid if self.role_uid is None else self.role_uid
+            return {"status": self.role_status, "msg": "OK", "data": {
+                "uid": uid, "roles": [{"serverId": "1", "roleId": "555", "nickname": "管理员", "serverName": "China"}]}}
+        if query.get("token") != self.token:
+            return {"code": 40001, "msg": "token invalid or expired", "data": None}
+        if parsed.path == "/api/record/char":
+            key = query["pool_type"].rsplit("_", 1)[-1].lower()
+            if key in self.fail_pool:
+                code, msg = self.fail_pool[key]
+                return {"code": code, "msg": msg, "data": None}
+            return self._page(self.chars.get(key, []), query.get("seq_id"))
+        if parsed.path == "/api/record/weapon/pool":
+            return {"code": 0, "msg": "", "data": [{"poolId": pid, "poolName": pid} for pid in self.weapons]}
+        if parsed.path == "/api/record/weapon":
+            return self._page(self.weapons.get(query["pool_id"], []), query.get("seq_id"))
+        return {"code": 404, "msg": "not found"}
+
+
+# ---------- 明日方舟 ----------
+AK_ACCOUNT_TOKEN = "ACCOUNT-TOKEN-secret-0123456789"
+
+
+def ak_item(n: int, name: str, rarity: int, category_ts: int = 1770697079082, pos: int | None = None,
+            pool: str = "pool_a") -> dict:
+    """第 n 条记录（n 越大越新）；每 10 条是一次十连，共用一个时间戳，pos 为 0..9。"""
+    return {"poolId": pool, "poolName": "某卡池", "charId": f"char_{n}", "charName": name, "rarity": rarity,
+            "isNew": False, "gachaTs": str(category_ts + n // 10 * 60_000), "pos": n % 10 if pos is None else pos}
+
+
+class FakeArknights:
+    """模拟原版明日方舟的整条接口链：授权 → 绑定 → 角色令牌 → 登录(Cookie) → 类别 → 翻页记录。
+
+    history：{类别id: [...从新到旧...]}；bindings：[(uid, 渠道, 昵称)]
+    """
+
+    def __init__(self, history=None, categories=None, bindings=None, account_token: str = AK_ACCOUNT_TOKEN,
+                 page_size: int = 4):
+        self.history = history or {}
+        self.categories = categories or [{"id": cid, "name": cid} for cid in self.history]
+        self.bindings = bindings or [("555000111", "官服", "博士")]
+        self.account_token, self.page_size = account_token, page_size
+        self.calls = []                  # (方法, 主机, 路径, 查询参数, 请求头, 请求体)
+        self.logged_in_as = set()
+        self.needs_account_header = False   # True：没有 x-account-token 请求头就回 UN_LOGIN（模拟个别接口要求）
+        self.drop_cookie = False            # True：永远回 MissingCookie
+
+    def _u8(self, uid):
+        return f"U8-{uid}"
+
+    def __call__(self, method, url, headers, body):
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        self.calls.append((method, parsed.hostname, parsed.path, query, dict(headers), body))
+        path = parsed.path
+        if path == "/user/oauth2/v2/grant":
+            if body.get("token") != self.account_token or body.get("appCode") != "be36d44aa36bfb5b" or body.get("type") != 1:
+                return {"status": 3, "msg": "token expired"}
+            return {"status": 0, "msg": "OK", "data": {"token": "OAUTH-xyz"}}
+        if path == "/account/binding/v1/binding_list":
+            if query.get("token") != "OAUTH-xyz":
+                return {"status": 3, "msg": "bad oauth"}
+            return {"status": 0, "msg": "OK", "data": {"list": [
+                {"appCode": "arknights", "appName": "明日方舟", "bindingList": [
+                    {"uid": uid, "channelName": channel, "nickName": nick} for uid, channel, nick in self.bindings]},
+                {"appCode": "endfield", "appName": "终末地", "bindingList": [{"uid": "777", "channelName": "官服"}]},
+            ]}}
+        if path == "/account/binding/v1/u8_token_by_uid":
+            return {"status": 0, "msg": "OK", "data": {"token": self._u8(body["uid"])}}
+        if path == "/user/api/role/login":
+            self.logged_in_as.add(body["token"])
+            return {"code": 0, "msg": "", "data": {}}
+        # 以下接口要先登录（Cookie），并带角色令牌
+        role = headers.get("x-role-token")
+        if self.drop_cookie or role not in self.logged_in_as:
+            return {"message": "缺少 Cookie", "reason": "MissingCookie"}
+        if self.needs_account_header and headers.get("x-account-token") != self.account_token:
+            return {"message": "未登录", "reason": "UN_LOGIN"}
+        if path == "/user/api/inquiry/gacha/cate":
+            return {"code": 0, "msg": "", "data": self.categories}
+        if path == "/user/api/inquiry/gacha/history":
+            items = self.history.get(query["category"], [])
+            start = 0
+            if query.get("gachaTs"):
+                start = next((i + 1 for i, it in enumerate(items)
+                              if it["gachaTs"] == query["gachaTs"] and str(it["pos"]) == query["pos"]), len(items))
+            page = items[start:start + self.page_size]
+            return {"code": 0, "msg": "", "data": {"list": page, "hasMore": start + self.page_size < len(items)}}
+        return {"code": 404, "msg": "not found"}

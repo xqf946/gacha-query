@@ -49,6 +49,10 @@ class GameNotFound(LocateError):
     """没找到这个游戏的安装目录（多半是电脑上没装）。“更新全部”时会据此静默跳过。"""
 
 
+class NeedsInput(LocateError):
+    """这个游戏没有本地文件可读，需要用户手动输入凭证（明日方舟）。“更新全部”时会据此跳过。"""
+
+
 def mask_path(path) -> str:
     """把路径里的 Windows 用户名换掉，方便用户把诊断信息发给别人。"""
     return re.sub(r"(?i)([\\/]Users[\\/])[^\\/]+", r"\1<用户>", str(path))
@@ -81,12 +85,12 @@ def resolve_data_dir(path, data_dir_name: str) -> Path | None:
     return next((c for c in candidates if c.is_dir()), None)
 
 
-def _home() -> Path:
+def home_dir() -> Path:
     return Path(os.environ.get("USERPROFILE") or Path.home())
 
 
 def default_log_paths() -> list[Path]:
-    root = _home() / "AppData" / "LocalLow" / "miHoYo"
+    root = home_dir() / "AppData" / "LocalLow" / "miHoYo"
     if not root.is_dir():
         return []
     return [

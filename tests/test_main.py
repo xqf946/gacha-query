@@ -41,7 +41,7 @@ class DemoData(unittest.TestCase):
             for game in GAMES:
                 store = Store(Path(tmp) / game.key)
                 self.assertIn(DEMO_UID, store.uids(), game.key)
-                pools = analyze(game, store.load(DEMO_UID)["records"])
+                pools = analyze(game, store.load(DEMO_UID)["records"], store.meta(DEMO_UID).get("pool_names"))
                 self.assertGreater(sum(p["total"] for p in pools), 100, game.key)
                 for pool in pools:
                     # 模拟的保底规律必须成立：没有任何一个最高档的垫抽超过硬保底

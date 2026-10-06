@@ -22,6 +22,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* 自己写的 display 样式不能把 hidden 的元素又显示出来 */
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -62,7 +63,10 @@
   details.adv label { display: grid; gap: 4px; font-size: 13px; }
   details.adv input { width: 100%; }
   details.adv .pick { display: flex; gap: 8px; }
+  #browse { white-space: nowrap; flex: none; }
   details.adv .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  pre.help { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13px; }
+  .need-input { border-color: var(--warn); }
   #report { width: 100%; min-height: 150px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; display: none; }
   #report.show { display: block; }
 
@@ -139,16 +143,17 @@
     <details class="adv">
       <summary>高级：自动找不到时手动指定 / 环境检测</summary>
       <div class="fields">
-        <label>当前游戏的安装目录（自动找不到时才需要）
+        <label id="dir-field">当前游戏的安装目录（自动找不到时才需要）
           <span class="pick">
             <input id="game-dir" placeholder="例如 D:\Games\游戏安装目录" autocomplete="off">
             <button id="browse" type="button">浏览…</button>
           </span>
         </label>
-        <label>或者直接粘贴记录链接（填了这个就不去读游戏文件）
-          <input id="manual-url" placeholder="https://…" autocomplete="off">
+        <label>
+          <span id="manual-label">或者直接粘贴记录链接（填了这个就不去读游戏文件）</span>
+          <input id="manual-url" placeholder="https://…" autocomplete="off" spellcheck="false">
         </label>
-        <span class="muted">记录链接相当于一把有时效的钥匙，别发给不信任的人。</span>
+        <pre id="manual-help" class="muted help"></pre>
         <div class="tools">
           <button id="diagnose" type="button">环境检测</button>
           <button id="copy-report" type="button" hidden>复制检测结果</button>
@@ -244,9 +249,24 @@ async function selectGame(key) {
   state.uid = game.uids.includes(remembered) ? remembered : game.uids[0] || null;
   $("#title").textContent = game.name;
   $("#game-dir").value = "";
+  applyManualField();
   renderGames();
   fillUids();
   if (state.uid) await loadWishes(); else renderEmpty();
+}
+
+// 「高级」里的手动输入框：多数游戏是“粘贴记录链接”（可选），明日方舟是“粘贴账号令牌”（必填，按密码显示）
+function applyManualField() {
+  const g = currentGame();
+  const input = $("#manual-url");
+  input.value = "";
+  input.type = g.manual_secret ? "password" : "text";
+  input.placeholder = g.manual_secret ? "粘贴官网页面上显示的整段文字" : "https://…";
+  input.classList.toggle("need-input", !!g.manual_required);
+  $("#dir-field").hidden = !!g.manual_required;       // 没有本地文件可读的游戏，不需要选安装目录
+  $("#manual-label").textContent = g.manual_label || "或者直接粘贴记录链接（填了这个就不去读游戏文件）";
+  $("#manual-help").textContent = g.manual_help || "记录链接相当于一把有时效的钥匙，别发给不信任的人。";
+  if (g.manual_required) $("details.adv").open = true;
 }
 
 function fillUids() {
@@ -279,7 +299,9 @@ async function startSync(game) {
   setStatus("info", "正在开始…");
   try {
     const single = game !== "all";
-    await call("start_sync", game, single ? $("#manual-url").value : "", single ? $("#game-dir").value : "");
+    const secret = single ? $("#manual-url").value : "";
+    $("#manual-url").value = "";       // 交给后台之后立刻清掉，令牌不在界面上多停留
+    await call("start_sync", game, secret, single ? $("#game-dir").value : "");
     poll();   // 已经有更新在跑时也一样：接着显示它的进度
   } catch (e) { onFatal(e); }
 }
@@ -347,15 +369,16 @@ async function copyReport() {
 // ---------- 渲染 ----------
 function renderEmpty() {
   const game = currentGame();
+  const steps = game.manual_required
+    ? [el("li", {}, "展开上面的「高级」，照说明拿到账号令牌，粘贴到框里。"),
+       el("li", {}, "点右上角的「更新记录」（这个游戏需要令牌，所以不能用「更新全部游戏」）。")]
+    : [el("li", {}, `打开${game.short_name}，${game.hint}`),
+       el("li", {}, "回到这里，点右上角的「更新记录」（只更新当前游戏），或左下角的「更新全部游戏」。")];
   $("#content").replaceChildren(el("section", { class: "card empty" },
     el("h2", {}, `还没有「${game.name}」的记录`),
     el("p", {}, "第一次使用，照下面做一遍："),
-    el("ol", {},
-      el("li", {}, `打开${game.short_name}，${game.hint}`),
-      el("li", {}, "回到这里，点右上角的「更新记录」（只更新当前游戏），或左下角的「更新全部游戏」。"),
-      el("li", {}, "几秒到几十秒后，记录就会出现在这里，并保存在本机，下次可以继续累加。"),
-    ),
-    el("p", { class: "muted" }, "官方只保留最近半年的记录，所以建议隔一阵更新一次，这样更早的记录也会被攒下来。"),
+    el("ol", {}, ...steps, el("li", {}, "几秒到几十秒后，记录就会出现在这里，并保存在本机，下次可以继续累加。")),
+    el("p", { class: "muted" }, `官方只保留${game.retention}的记录，所以建议隔一阵更新一次，这样更早的记录也会被攒下来。`),
   ));
 }
 
@@ -392,8 +415,9 @@ function renderPool(pool) {
     stat(`${g.top_name}（${rate}）`, pool.top_count),
     stat(g.second_name, pool.second_count),
     stat(`${g.top_name}平均抽数`, pool.avg_pity_top ?? "-"),
-    stat(`约消耗${g.currency}`, pool.cost.toLocaleString()),
   ];
+  if (g.has_cost && pool.cost != null) cards.push(stat(`约消耗${g.currency}`, pool.cost.toLocaleString()));
+  if (pool.free_count) cards.push(stat("免费抽（不计保底）", pool.free_count));
   if (g.has_standard && pool.standard_count) cards.push(stat("出过常驻角色", pool.standard_count));
 
   const parts = [el("div", { class: "stats" }, cards)];
@@ -434,6 +458,7 @@ function renderTops(pool) {
       const level = pityLevel(pool, r.pity);
       return el("div", { class: "item" },
         el("span", { class: "name" }, r.name,
+          r.free ? el("span", { class: "tag", title: "免费抽（如加急招募）不计入保底" }, "免费") : "",
           r.standard ? el("span", { class: "tag", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "常驻") : "",
           el("span", { class: "time" }, r.time)),
         el("div", { class: "bar" }, el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (r.pity / cap) * 100)}%` })),

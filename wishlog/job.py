@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .client import WishError
 from .games.base import Game
-from .locate import GameNotFound, LocateError
+from .locate import GameNotFound, LocateError, NeedsInput
 from .settings import Settings
 from .store import Store
 
@@ -60,7 +60,7 @@ class SyncJob:
         if remembered:
             try:
                 return game.connect(client, url, remembered)
-            except GameNotFound:
+            except (GameNotFound, NeedsInput):
                 raise
             except LocateError:
                 pass   # 以前记住的目录可能已经失效（游戏搬过家），退回自动查找
@@ -84,7 +84,9 @@ class SyncJob:
             return {"game": game.key, "name": game.name, "state": "done", "uid": result["uid"],
                     "new": result["total_new"], "warnings": result.get("warnings", []), "message": ""}
         except GameNotFound as e:
-            return {"game": game.key, "name": game.name, "state": "skipped", "message": str(e)}
+            return {"game": game.key, "name": game.name, "state": "skipped", "reason": "not_found", "message": str(e)}
+        except NeedsInput as e:   # 需要用户手动粘贴凭证（明日方舟）：“更新全部”时不能替用户做，只能提示
+            return {"game": game.key, "name": game.name, "state": "skipped", "reason": "needs_input", "message": str(e)}
         except (WishError, LocateError) as e:
             return {"game": game.key, "name": game.name, "state": "error", "message": str(e)}
         except Exception as e:  # 兜底：不管出什么问题，界面都应该看到一个结果而不是一直转圈
@@ -114,6 +116,8 @@ class SyncJob:
             if r["state"] == "done":
                 lines.append(f"{r['name']}：" + (f"新增 {r['new']} 条" if r["new"] else "已是最新"))
                 lines.extend(f"　{w}" for w in r["warnings"])
+            elif r["state"] == "skipped" and r.get("reason") == "needs_input":
+                lines.append(f"{r['name']}：{_first_line(r['message'])}（请到它自己的页面单独更新）")
             elif r["state"] == "skipped":
                 lines.append(f"{r['name']}：没有检测到这个游戏")
             else:

@@ -14,6 +14,8 @@ from pathlib import Path
 
 # 只留需要的字段；uid 记在文件名和文件头里，不在每条记录里重复。
 KEEP = ("id", "gacha_type", "item_id", "count", "time", "name", "item_type", "rank_type")
+# 只有个别游戏才有的附加字段，有就留着：free=免费抽（"1"），pool_id=具体是哪一期卡池
+OPTIONAL = ("free", "pool_id")
 
 
 class Store:
@@ -40,20 +42,29 @@ class Store:
     def known_ids(self, uid: str) -> set:
         return {r["id"] for r in self.load(uid)["records"]}
 
-    def merge(self, uid: str, records: list) -> int:
-        """合并新记录，返回真正新增的条数。"""
+    def meta(self, uid: str) -> dict:
+        """随账号一起保存的附加信息，例如明日方舟各卡池类别的名字。"""
+        return self.load(uid).get("meta") or {}
+
+    def merge(self, uid: str, records: list, meta: dict | None = None) -> int:
+        """合并新记录，返回真正新增的条数。meta 里的内容会合并进账号的附加信息。"""
         with self._lock:
             doc = self.load(uid)
             by_id = {r["id"]: r for r in doc["records"]}
             added = 0
             for r in records:
                 if r["id"] not in by_id:
-                    by_id[r["id"]] = {k: r[k] for k in KEEP}
+                    by_id[r["id"]] = {k: r[k] for k in KEEP} | {k: r[k] for k in OPTIONAL if r.get(k) not in (None, "")}
                     added += 1
-            if added == 0 and doc["updated_at"]:
+            merged_meta = {**(doc.get("meta") or {}), **(meta or {})}
+            meta_changed = merged_meta != (doc.get("meta") or {})
+            if added == 0 and doc["updated_at"] and not meta_changed:
                 return 0
             doc["uid"] = uid
-            doc["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            if added or not doc["updated_at"]:
+                doc["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            if merged_meta:
+                doc["meta"] = merged_meta
             doc["records"] = sorted(by_id.values(), key=lambda r: int(r["id"]))
             self._write(self._path(uid), doc)
             return added
