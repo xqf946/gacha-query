@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -62,3 +63,25 @@ class Store:
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)  # 先写临时文件再替换，中途出错不会弄坏旧数据
+
+
+def migrate_legacy(data_dir, game_key: str = "genshin") -> int:
+    """v0.2.x 把记录直接放在 data 目录下（只有原神）。多游戏之后每个游戏一个子文件夹。
+
+    先把旧文件复制到新位置，确认复制成功后，才把旧文件挪进 backup-before-multi-game，
+    这样中途出任何问题都不会丢记录。返回搬了几个文件。
+    """
+    data_dir = Path(data_dir)
+    legacy = [p for p in data_dir.glob("*.json") if p.stem.isdigit()] if data_dir.is_dir() else []
+    if not legacy:
+        return 0
+    target = data_dir / game_key
+    backup = data_dir / "backup-before-multi-game"
+    target.mkdir(parents=True, exist_ok=True)
+    backup.mkdir(parents=True, exist_ok=True)
+    for path in legacy:
+        destination = target / path.name
+        if not destination.exists():
+            shutil.copy2(path, destination)
+        shutil.move(str(path), str(backup / path.name))
+    return len(legacy)

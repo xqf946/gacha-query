@@ -1,4 +1,4 @@
-"""官方祈愿记录接口的客户端。"""
+"""米哈游祈愿记录接口的客户端（原神、崩铁、绝区零通用，只是域名、路径、参数名不同）。"""
 
 from __future__ import annotations
 
@@ -10,13 +10,10 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-API_HOST = "https://public-operation-hk4e.mihoyo.com"
-API_PATH = "/gacha_info/api/getGachaLog"
 ALLOWED_HOST_SUFFIX = "mihoyo.com"   # authkey 只会发给这个域名下的服务器
-GAME_BIZ = "hk4e_cn"                 # 国服（官服 / B服）
 PAGE_SIZE = 20                       # 接口单页最多 20 条
 MAX_PROBES = 6                       # 缓存里有多条链接时，最多试几条
-_PAGING_KEYS = {"page", "size", "gacha_type", "end_id"}
+_PAGING_KEYS = {"page", "size", "gacha_type", "real_gacha_type", "end_id"}
 _AUTHKEY_OK = re.compile(r"^[A-Za-z0-9%+/=_.~-]+$")
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -45,6 +42,17 @@ class NetworkError(WishError):
 
 
 @dataclass(frozen=True)
+class ApiSpec:
+    """一个游戏的接口信息。"""
+
+    host: str                    # "https://public-operation-hk4e.mihoyo.com"
+    path: str                    # "/gacha_info/api/getGachaLog"
+    biz_prefix: str              # "hk4e"：链接里的 game_biz 必须是 hk4e_cn 或 hk4e_bilibili
+    type_param: str = "gacha_type"   # 绝区零叫 real_gacha_type
+    ld_path: str | None = None   # 崩铁联动池的接口路径
+
+
+@dataclass(frozen=True)
 class Auth:
     """从祈愿链接里取出的、请求接口所需的固定参数（不含翻页参数）。"""
 
@@ -55,7 +63,7 @@ class Auth:
         return dict(self.params)["authkey"]
 
 
-def parse_wish_url(url: str) -> Auth:
+def parse_wish_url(url: str, spec: ApiSpec) -> Auth:
     u = urlparse(url.strip().strip('"'))
     host = u.hostname or ""
     if u.scheme != "https" or not (host == ALLOWED_HOST_SUFFIX or host.endswith("." + ALLOWED_HOST_SUFFIX)):
@@ -64,8 +72,9 @@ def parse_wish_url(url: str) -> Auth:
     params: dict[str, str] = {}
     for key, value in parse_qsl(u.query):
         params.setdefault(key, value)
-    if params.get("game_biz") != GAME_BIZ:
-        raise InvalidUrl("这不是原神国服的祈愿链接（game_biz 不是 hk4e_cn）。")
+    # 官服的 game_biz 是 xxx_cn，B 服是 xxx_bilibili，接口是同一套
+    if params.get("game_biz") not in (f"{spec.biz_prefix}_cn", f"{spec.biz_prefix}_bilibili"):
+        raise InvalidUrl(f"这不是这个游戏的祈愿链接（game_biz 应该以 {spec.biz_prefix}_ 开头）。")
     if not params.get("region"):
         raise InvalidUrl("链接里缺少 region 参数，请重新在游戏里打开一次历史记录页面。")
     authkey = params.get("authkey", "")
@@ -99,10 +108,11 @@ def _http_get_json(url: str) -> dict:
 
 
 class Client:
-    def __init__(self, fetch=_http_get_json, sleep=time.sleep, api_host: str = API_HOST):
+    def __init__(self, spec: ApiSpec, fetch=_http_get_json, sleep=time.sleep, api_host: str | None = None):
+        self.spec = spec
         self._fetch = fetch
         self._sleep = sleep
-        self._api = api_host + API_PATH
+        self._host = api_host or spec.host
         self._calls = 0
 
     def _pace(self) -> None:
@@ -111,10 +121,11 @@ class Client:
             self._sleep(1.0 if self._calls % 10 == 0 else 0.3)
         self._calls += 1
 
-    def fetch_page(self, auth: Auth, gacha_type: str, page: int, end_id: str = "0") -> list:
+    def fetch_page(self, auth: Auth, pool_key: str, page: int, end_id: str = "0", ld: bool = False) -> list:
         query = dict(auth.params)
-        query.update(gacha_type=gacha_type, page=page, size=PAGE_SIZE, end_id=end_id)
-        url = f"{self._api}?{urlencode(query)}"
+        query.update({self.spec.type_param: pool_key, "page": page, "size": PAGE_SIZE, "end_id": end_id})
+        path = self.spec.ld_path if (ld and self.spec.ld_path) else self.spec.path
+        url = f"{self._host}{path}?{urlencode(query)}"
 
         for attempt in range(1, 6):
             self._pace()
@@ -125,7 +136,7 @@ class Client:
             if code in (-100, -101):
                 raise AuthExpired(
                     "祈愿链接已经失效（有效期约 24 小时）。请在游戏里重新打开一次"
-                    "“祈愿 → 历史记录”，再回来更新。"
+                    "“历史记录”页面，再回来更新。"
                 )
             if code == -110:  # 访问过于频繁：等一会儿再试
                 self._sleep(3 * attempt)
@@ -133,13 +144,13 @@ class Client:
             raise ApiError(f"官方接口返回错误：{message}（retcode {code}）")
         raise ApiError("官方接口提示访问过于频繁，请稍后再试。")
 
-    def pick_valid_auth(self, urls: list) -> Auth:
+    def pick_valid_auth(self, urls: list, probe_pool: str) -> Auth:
         """缓存里可能留着好几条链接，从最新的开始试，返回第一条还有效的。"""
         invalid: WishError | None = None
         tried = 0
         for url in urls:
             try:
-                auth = parse_wish_url(url)
+                auth = parse_wish_url(url, self.spec)
             except InvalidUrl as e:
                 invalid = e
                 continue
@@ -147,7 +158,7 @@ class Client:
                 break
             tried += 1
             try:
-                self.fetch_page(auth, "301", 1)
+                self.fetch_page(auth, probe_pool, 1)
                 return auth
             except AuthExpired as e:
                 invalid = e

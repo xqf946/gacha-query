@@ -12,9 +12,11 @@ from pathlib import Path
 from . import __version__
 from .api import Api
 from .demo import seed
+from .games import GAMES
 from .job import SyncJob
 from .paths import default_data_dir
-from .store import Store
+from .settings import Settings
+from .store import migrate_legacy
 
 TITLE = "原神抽卡记录"
 INDEX = Path(__file__).parent / "static" / "index.html"
@@ -97,6 +99,7 @@ class WebviewDialogs:
 
 _PROBE = """(() => ({
   bridge: !!(window.pywebview && window.pywebview.api),
+  games: [...document.querySelectorAll('.game')].map(t => t.textContent),
   tabs: [...document.querySelectorAll('.tab')].map(t => t.textContent),
   total: (document.querySelector('.stat .v') || {}).textContent || null,
   status: (document.querySelector('#status') || {}).textContent || ''
@@ -122,7 +125,9 @@ def _selftest(window, out_path: str) -> None:
             time.sleep(0.5)
         if data:
             result.update(data)
-        result["ok"] = bool(data and data.get("bridge") and data.get("tabs"))
+        result["ok"] = bool(
+            data and data.get("bridge") and data.get("tabs") and len(data.get("games") or []) == len(GAMES)
+        )
     except Exception:
         result["error"] = traceback.format_exc()
     finally:
@@ -130,7 +135,7 @@ def _selftest(window, out_path: str) -> None:
         window.destroy()
 
 
-def run(data_dir=None, game_dir=None, demo=False, selftest_out=None, debug=False) -> int:
+def run(data_dir=None, demo=False, selftest_out=None, debug=False) -> int:
     if not webview2_available():
         show_error(
             TITLE,
@@ -143,12 +148,13 @@ def run(data_dir=None, game_dir=None, demo=False, selftest_out=None, debug=False
 
     if demo or selftest_out:  # 演示和自检用临时目录，不碰真实记录
         data_dir = Path(tempfile.mkdtemp(prefix="wishlog-demo-"))
-        seed(Store(data_dir))
+        seed(data_dir)
     data_dir = Path(data_dir or default_data_dir())
+    migrate_legacy(data_dir)   # 旧版本把原神记录直接放在 data 下，搬进 genshin 子文件夹（留备份）
 
-    store = Store(data_dir)
+    settings = Settings(data_dir / "settings.json")
     dialogs = WebviewDialogs(webview)
-    api = Api(store, SyncJob(store, default_game_dir=game_dir or None), data_dir, dialogs)
+    api = Api(data_dir, GAMES, SyncJob(data_dir, GAMES, settings), settings, dialogs)
     window = webview.create_window(
         TITLE, url=str(INDEX), js_api=api,
         width=1000, height=680, min_size=(820, 520),  # 留出余量：常见笔记本屏幕只有 1366×768

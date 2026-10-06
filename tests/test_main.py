@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from wishlog.demo import DEMO_UID, seed
+from wishlog.demo import DEMO_UID, DEMO_UID_2, seed
+from wishlog.games import GAMES
 from wishlog.paths import default_data_dir
 from wishlog.stats import analyze
 from wishlog.store import Store
@@ -34,17 +35,33 @@ class DefaultDataDir(unittest.TestCase):
 
 
 class DemoData(unittest.TestCase):
-    def test_seed_produces_a_realistic_two_account_dataset(self):
+    def test_seed_produces_realistic_data_for_every_game(self):
         with tempfile.TemporaryDirectory() as tmp:
-            store = Store(tmp)
-            seed(store)
-            self.assertEqual(store.uids(), [DEMO_UID, "200000002"])
-            totals = {p["key"]: p["total"] for p in analyze(store.load(DEMO_UID)["records"])}
-            self.assertEqual(totals, {"301": 214, "302": 96, "500": 31, "200": 140, "100": 20})
-            # 模拟的保底规律必须成立：没有任何一个五星的垫抽超过硬保底
-            for pool in analyze(store.load(DEMO_UID)["records"]):
-                if pool["hard_pity"]:
-                    self.assertLessEqual(pool["max_pity5"] or 0, pool["hard_pity"])
+            seed(Path(tmp))
+            for game in GAMES:
+                store = Store(Path(tmp) / game.key)
+                self.assertIn(DEMO_UID, store.uids(), game.key)
+                pools = analyze(game, store.load(DEMO_UID)["records"])
+                self.assertGreater(sum(p["total"] for p in pools), 100, game.key)
+                for pool in pools:
+                    # 模拟的保底规律必须成立：没有任何一个最高档的垫抽超过硬保底
+                    if pool["hard_pity"] and pool["total"]:
+                        self.assertLessEqual(pool["max_pity_top"] or 0, pool["hard_pity"], (game.key, pool["key"]))
+            self.assertEqual(Store(Path(tmp) / "genshin").uids(), [DEMO_UID, DEMO_UID_2])
+
+    def test_demo_zzz_data_uses_the_s_a_b_ranks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(Path(tmp))
+            ranks = {r["rank_type"] for r in Store(Path(tmp) / "zzz").load(DEMO_UID)["records"]}
+            self.assertEqual(ranks, {"4", "3", "2"})
+
+    def test_demo_wuwa_data_has_same_second_ten_pulls_with_unique_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(Path(tmp))
+            records = Store(Path(tmp) / "wuwa").load(DEMO_UID)["records"]
+            self.assertEqual(len({r["id"] for r in records}), len(records))
+            times = [r["time"] for r in records if r["gacha_type"] == "1"]
+            self.assertGreater(max(times.count(t) for t in times), 1)   # 同一秒里有多条
 
 
 if __name__ == "__main__":

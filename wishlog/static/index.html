@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>原神抽卡记录</title>
+<title>抽卡记录</title>
 <style>
   :root {
-    --bg: #f6f5f1; --card: #ffffff; --ink: #23221f; --muted: #6f6c64; --line: #e4e1d8;
+    --bg: #f6f5f1; --card: #ffffff; --side: #ece9e0; --ink: #23221f; --muted: #6f6c64; --line: #e4e1d8;
     --accent: #3b5bdb; --accent-ink: #ffffff;
-    --r5: #b7791f; --r5-bg: #fbf0d9; --r4: #7048c7; --r4-bg: #efe8fb; --r3: #5d6b7a;
+    --top: #b7791f; --top-bg: #fbf0d9; --second: #7048c7; --second-bg: #efe8fb; --other: #5d6b7a;
     --good: #2f855a; --warn: #b7791f; --bad: #c53030; --track: #ece9e0;
-    --ok-bg: #e6f4ea; --err-bg: #fdeaea; --info-bg: #e8eefc;
+    --ok-bg: #e6f4ea; --err-bg: #fdeaea; --info-bg: #e8eefc; --warn-bg: #fdf3dc;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #17171a; --card: #202024; --ink: #ecebe6; --muted: #9b988f; --line: #33333a;
+      --bg: #17171a; --card: #202024; --side: #1d1d21; --ink: #ecebe6; --muted: #9b988f; --line: #33333a;
       --accent: #748ffc; --accent-ink: #11131a;
-      --r5: #f2c14e; --r5-bg: #3a3119; --r4: #b79cf5; --r4-bg: #2d2640; --r3: #8d9aa8;
+      --top: #f2c14e; --top-bg: #3a3119; --second: #b79cf5; --second-bg: #2d2640; --other: #8d9aa8;
       --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
-      --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45;
+      --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45; --warn-bg: #3a3119;
     }
   }
   * { box-sizing: border-box; }
@@ -26,10 +26,7 @@
     margin: 0; background: var(--bg); color: var(--ink);
     font: 15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
-  h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; }
-  button, select, input {
+  button, select, input, textarea {
     font: inherit; color: var(--ink); background: var(--card);
     border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px;
   }
@@ -39,21 +36,40 @@
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  /* ---- 整体布局：左侧游戏列表 + 右侧内容 ---- */
+  .app { display: grid; grid-template-columns: 188px 1fr; min-height: 100vh; }
+  .side { background: var(--side); padding: 18px 12px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line);
+          position: sticky; top: 0; height: 100vh; overflow-y: auto; }   /* 固定在窗口左边，“更新全部”始终看得到 */
+  .brand { font-weight: 700; font-size: 16px; padding: 2px 8px 12px; letter-spacing: .5px; }
+  .game { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 9px 10px; }
+  .game small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .game[aria-current="true"] { background: var(--card); border-color: var(--line); font-weight: 600; }
+  .side .spacer { flex: 1; }
+  .main { padding: 20px 20px 50px; min-width: 0; max-width: 980px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; }
+
   #status { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; display: none; white-space: pre-line; }
   #status.show { display: block; }
-  #status.info { background: var(--info-bg); } #status.ok { background: var(--ok-bg); } #status.error { background: var(--err-bg); }
+  #status.info { background: var(--info-bg); } #status.ok { background: var(--ok-bg); }
+  #status.warn { background: var(--warn-bg); } #status.error { background: var(--err-bg); }
+
   details.adv { margin-bottom: 14px; color: var(--muted); }
   details.adv summary { cursor: pointer; width: fit-content; }
-  details.adv .fields { display: grid; gap: 8px; margin-top: 10px; }
+  details.adv .fields { display: grid; gap: 10px; margin-top: 10px; }
   details.adv label { display: grid; gap: 4px; font-size: 13px; }
   details.adv input { width: 100%; }
   details.adv .pick { display: flex; gap: 8px; }
-  footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
-  footer a { color: var(--accent); }
+  details.adv .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #report { width: 100%; min-height: 150px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; display: none; }
+  #report.show { display: block; }
+
   .empty h2 { margin: 0 0 8px; font-size: 18px; }
   .empty ol { padding-left: 20px; margin: 10px 0; }
   .empty li { margin: 4px 0; }
-  .muted { color: var(--muted); font-size: 13px; }
+
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
   .tab { border-radius: 999px; padding: 6px 14px; }
   .tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -70,13 +86,13 @@
   .pity .bar { overflow: visible; }
   .pity .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted); opacity: .6; }
   h2.sec { font-size: 16px; margin: 20px 0 10px; }
-  .five { display: grid; gap: 2px; }
-  .five .item { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 44px; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  .five .item:last-child { border-bottom: 0; }
-  .five .name { font-weight: 600; }
-  .five .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
-  .five .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .five .num.good { color: var(--good); } .five .num.warn { color: var(--warn); } .five .num.bad { color: var(--bad); }
+  .tops { display: grid; gap: 2px; }
+  .tops .item { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 44px; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .tops .item:last-child { border-bottom: 0; }
+  .tops .name { font-weight: 600; }
+  .tops .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
+  .tops .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tops .num.good { color: var(--good); } .tops .num.warn { color: var(--warn); } .tops .num.bad { color: var(--bad); }
   .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; font-weight: 500; }
   .filters { display: flex; gap: 8px; margin-bottom: 8px; }
   .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -84,49 +100,73 @@
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 13px; }
-  tr.r5 td.nm { color: var(--r5); font-weight: 700; } tr.r5 { background: var(--r5-bg); }
-  tr.r4 td.nm { color: var(--r4); font-weight: 600; } tr.r4 { background: var(--r4-bg); }
-  tr.r3 td.nm { color: var(--r3); }
+  tr.top td.nm { color: var(--top); font-weight: 700; } tr.top { background: var(--top-bg); }
+  tr.second td.nm { color: var(--second); font-weight: 600; } tr.second { background: var(--second-bg); }
+  tr.other td.nm { color: var(--other); }
   .more { display: block; margin: 12px auto 0; }
-  @media (max-width: 520px) { .five .item { grid-template-columns: 1fr 44px; } .five .bar { grid-column: 1 / -1; order: 3; } }
+  footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
+  footer a { color: var(--accent); }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    .side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; position: static; height: auto; }
+    .brand, .side .spacer { display: none; }
+    .game { width: auto; white-space: nowrap; }
+  }
+  @media (max-width: 520px) { .tops .item { grid-template-columns: 1fr 44px; } .tops .bar { grid-column: 1 / -1; order: 3; } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>原神抽卡记录</h1>
-    <select id="uid" aria-label="选择 UID" hidden></select>
-    <button id="export-csv" hidden>导出 CSV</button>
-    <button id="export-json" hidden>导出 JSON</button>
-    <button id="sync" class="primary">更新记录</button>
-  </header>
+<div class="app">
+  <aside class="side">
+    <div class="brand">抽卡记录</div>
+    <nav id="games"></nav>
+    <div class="spacer"></div>
+    <button id="sync-all" title="依次检查每个游戏，没装的会自动跳过">更新全部游戏</button>
+  </aside>
 
-  <div id="status" role="status" aria-live="polite"></div>
+  <div class="main">
+    <header>
+      <h1 id="title">抽卡记录</h1>
+      <select id="uid" aria-label="选择账号" hidden></select>
+      <button id="export-csv" hidden>导出 CSV</button>
+      <button id="export-json" hidden>导出 JSON</button>
+      <button id="sync" class="primary">更新记录</button>
+    </header>
 
-  <details class="adv">
-    <summary>高级：自动找不到时手动指定</summary>
-    <div class="fields">
-      <label>游戏安装目录（里面有 YuanShen.exe 的文件夹）
-        <span class="pick">
-          <input id="game-dir" placeholder="例如 D:\Genshin Impact\Genshin Impact Game" autocomplete="off">
-          <button id="browse" type="button">浏览…</button>
-        </span>
-      </label>
-      <label>或者直接粘贴祈愿链接（填了这个就不去读游戏缓存）
-        <input id="manual-url" placeholder="https://public-operation-hk4e.mihoyo.com/gacha_info/api/getGachaLog?..." autocomplete="off">
-      </label>
-      <span class="muted">祈愿链接相当于一把 24 小时有效的钥匙，别发给不信任的人。</span>
-    </div>
-  </details>
+    <div id="status" role="status" aria-live="polite"></div>
 
-  <main id="content"></main>
-  <footer id="footer" class="muted"></footer>
+    <details class="adv">
+      <summary>高级：自动找不到时手动指定 / 环境检测</summary>
+      <div class="fields">
+        <label>当前游戏的安装目录（自动找不到时才需要）
+          <span class="pick">
+            <input id="game-dir" placeholder="例如 D:\Games\游戏安装目录" autocomplete="off">
+            <button id="browse" type="button">浏览…</button>
+          </span>
+        </label>
+        <label>或者直接粘贴记录链接（填了这个就不去读游戏文件）
+          <input id="manual-url" placeholder="https://…" autocomplete="off">
+        </label>
+        <span class="muted">记录链接相当于一把有时效的钥匙，别发给不信任的人。</span>
+        <div class="tools">
+          <button id="diagnose" type="button">环境检测</button>
+          <button id="copy-report" type="button" hidden>复制检测结果</button>
+          <span class="muted">检查每个游戏的安装、缓存/日志、链接是否找到；结果里不含任何密钥，可以发给开发者排查问题。</span>
+        </div>
+        <textarea id="report" readonly aria-label="环境检测结果"></textarea>
+      </div>
+    </details>
+
+    <main id="content"></main>
+    <footer id="footer" class="muted"></footer>
+  </div>
 </div>
 
 <script>
 const $ = (sel) => document.querySelector(sel);
 
-// 所有来自接口的文字都经 textContent 写入，不拼 HTML
+// 所有来自后台的文字都经 textContent 写入，不拼 HTML
 function el(tag, props = {}, ...kids) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -139,12 +179,13 @@ function el(tag, props = {}, ...kids) {
   return node;
 }
 
-const state = { uid: null, data: null, pool: "301", filter: "all", shown: 100 };
+const state = { games: [], game: null, uid: null, data: null, pool: null, filter: "all", shown: 100 };
 const PAGE = 100;
 
 // 后台方法由软件窗口注入：window.pywebview.api.<方法名>(...)，返回 Promise
 const inApp = () => !!(window.pywebview && window.pywebview.api);
 const call = (name, ...args) => window.pywebview.api[name](...args);
+const currentGame = () => state.games.find((g) => g.key === state.game);
 
 function onFatal(e) {
   setRunning(false);
@@ -153,12 +194,12 @@ function onFatal(e) {
 
 // 这个页面只能在软件的窗口里用；如果被人直接拿浏览器打开，就没有后台可以调用
 function renderNotInApp() {
-  $("#sync").disabled = true;
+  $("#sync").disabled = $("#sync-all").disabled = true;
   $("#uid").hidden = $("#export-csv").hidden = $("#export-json").hidden = true;
-  setStatus("error", "这个页面需要在「原神抽卡记录」软件的窗口里使用，不能直接用浏览器打开。");
+  setStatus("error", "这个页面需要在「抽卡记录」软件的窗口里使用，不能直接用浏览器打开。");
   $("#content").replaceChildren(el("section", { class: "card empty" },
     el("h2", {}, "请打开软件"),
-    el("p", {}, "请从开始菜单或桌面快捷方式启动「原神抽卡记录」，在它自己的窗口里使用。"),
+    el("p", {}, "请从开始菜单或桌面快捷方式启动「抽卡记录」，在它自己的窗口里使用。"),
   ));
 }
 
@@ -172,9 +213,12 @@ function setStatus(kind, text) {
 async function init() {
   const [st, info] = await Promise.all([call("get_state"), call("app_info")]);
   renderFooter(info);
-  fillUids(st.uids);
+  state.games = st.games;
+  const remembered = safeGet("game");
+  const firstWithData = state.games.find((g) => g.uids.length);
+  state.game = (state.games.find((g) => g.key === remembered) || firstWithData || state.games[0]).key;
   if (st.sync.state === "running") { setRunning(true); poll(); }
-  if (state.uid) await loadWishes(); else renderEmpty();
+  await selectGame(state.game);
 }
 
 function renderFooter(info) {
@@ -184,37 +228,58 @@ function renderFooter(info) {
     ` · v${info.version}`);
 }
 
-function fillUids(uids) {
+function renderGames() {
+  $("#games").replaceChildren(...state.games.map((g) => el("button", {
+    class: "game", "aria-current": g.key === state.game ? "true" : "false",
+    onclick: () => selectGame(g.key).catch(onFatal),
+  }, g.short_name, el("small", {}, g.uids.length ? `${g.uids.length} 个账号` : "未导入"))));
+}
+
+async function selectGame(key) {
+  state.game = key;
+  safeSet("game", key);
+  state.pool = null; state.filter = "all"; state.data = null;
+  const game = currentGame();
+  const remembered = safeGet(`uid:${key}`);
+  state.uid = game.uids.includes(remembered) ? remembered : game.uids[0] || null;
+  $("#title").textContent = game.name;
+  $("#game-dir").value = "";
+  renderGames();
+  fillUids();
+  if (state.uid) await loadWishes(); else renderEmpty();
+}
+
+function fillUids() {
+  const game = currentGame();
   const select = $("#uid");
-  select.replaceChildren(...uids.map((u) => el("option", { value: u }, `UID ${u}`)));
-  const remembered = safeGet("uid");
-  state.uid = uids.includes(state.uid) ? state.uid : (uids.includes(remembered) ? remembered : uids[0] || null);
+  select.replaceChildren(...game.uids.map((u) => el("option", { value: u }, `UID ${u}`)));
   if (state.uid) select.value = state.uid;
-  select.hidden = uids.length < 2;
+  select.hidden = game.uids.length < 2;
   $("#export-csv").hidden = $("#export-json").hidden = !state.uid;
 }
 
 async function loadWishes() {
-  const data = await call("get_wishes", state.uid);
+  const data = await call("get_wishes", state.game, state.uid);
   if (data.error) { setStatus("error", data.error); return; }
   state.data = data;
   state.shown = PAGE;
-  if (!data.pools.some((p) => p.key === state.pool)) state.pool = data.pools[0].key;
+  const visible = data.pools.filter((p) => p.total > 0);
+  if (!visible.some((p) => p.key === state.pool)) state.pool = (visible[0] || data.pools[0]).key;
   render();
 }
 
 // ---------- 更新 ----------
 function setRunning(running) {
-  const btn = $("#sync");
-  btn.disabled = running;
-  btn.textContent = running ? "更新中…" : "更新记录";
+  $("#sync").disabled = $("#sync-all").disabled = running;
+  $("#sync").textContent = running ? "更新中…" : "更新记录";
 }
 
-async function startSync() {
+async function startSync(game) {
   setRunning(true);
   setStatus("info", "正在开始…");
   try {
-    await call("start_sync", $("#manual-url").value, $("#game-dir").value);
+    const single = game !== "all";
+    await call("start_sync", game, single ? $("#manual-url").value : "", single ? $("#game-dir").value : "");
     poll();   // 已经有更新在跑时也一样：接着显示它的进度
   } catch (e) { onFatal(e); }
 }
@@ -229,19 +294,26 @@ async function poll() {
     }
     setRunning(false);
     if (job.state === "error") { setStatus("error", job.message); return; }
-    setStatus("ok", job.message);
+    setStatus(job.warn ? "warn" : "ok", job.message);
     const st = await call("get_state");
-    if (job.uid) state.uid = job.uid;
-    fillUids(st.uids);
-    safeSet("uid", state.uid);
-    await loadWishes();
+    state.games = st.games;
+    if (job.uid && job.game === state.game) {
+      state.uid = job.uid;
+      safeSet(`uid:${state.game}`, job.uid);
+    }
+    if (job.game && job.game !== state.game && job.results.length === 1) state.game = job.game;
+    if (!currentGame().uids.length) {   // “更新全部”之后，当前游戏没数据就换到有数据的第一个
+      const other = state.games.find((g) => g.uids.length);
+      if (other) state.game = other.key;
+    }
+    await selectGame(state.game);
   } catch (e) { onFatal(e); }
 }
 
 // ---------- 需要系统对话框的操作 ----------
 async function doExport(fmt) {
   try {
-    const r = await call("export_records", state.uid, fmt);
+    const r = await call("export_records", state.game, state.uid, fmt);
     if (r.error) setStatus("error", r.error);
     else if (r.ok) setStatus("ok", `已导出到：${r.path}`);
   } catch (e) { onFatal(e); }
@@ -254,14 +326,33 @@ async function browseGameDir() {
   } catch (e) { onFatal(e); }
 }
 
+async function runDiagnose() {
+  try {
+    $("#diagnose").disabled = true;
+    const { report } = await call("diagnose");
+    const box = $("#report");
+    box.value = report;
+    box.className = "show";
+    $("#copy-report").hidden = false;
+  } catch (e) { onFatal(e); } finally { $("#diagnose").disabled = false; }
+}
+
+async function copyReport() {
+  const box = $("#report");
+  try { await navigator.clipboard.writeText(box.value); }
+  catch { box.select(); document.execCommand("copy"); }   // 剪贴板接口不可用时的备用办法
+  setStatus("ok", "检测结果已复制，可以直接粘贴发给开发者。");
+}
+
 // ---------- 渲染 ----------
 function renderEmpty() {
+  const game = currentGame();
   $("#content").replaceChildren(el("section", { class: "card empty" },
-    el("h2", {}, "还没有抽卡记录"),
+    el("h2", {}, `还没有「${game.name}」的记录`),
     el("p", {}, "第一次使用，照下面做一遍："),
     el("ol", {},
-      el("li", {}, "打开原神，进入「祈愿」→ 左下角「历史记录」，随便点开一个卡池翻一翻。"),
-      el("li", {}, "回到这里，点右上角的「更新记录」。"),
+      el("li", {}, `打开${game.short_name}，${game.hint}`),
+      el("li", {}, "回到这里，点右上角的「更新记录」（只更新当前游戏），或左下角的「更新全部游戏」。"),
       el("li", {}, "几秒到几十秒后，记录就会出现在这里，并保存在本机，下次可以继续累加。"),
     ),
     el("p", { class: "muted" }, "官方只保留最近半年的记录，所以建议隔一阵更新一次，这样更早的记录也会被攒下来。"),
@@ -274,7 +365,9 @@ function render() {
 }
 
 function renderTabs() {
-  return el("div", { class: "tabs", role: "tablist" }, state.data.pools.map((p) =>
+  const visible = state.data.pools.filter((p) => p.total > 0);
+  const pools = visible.length ? visible : state.data.pools;
+  return el("div", { class: "tabs", role: "tablist" }, pools.map((p) =>
     el("button", {
       class: "tab", role: "tab", "aria-selected": p.key === state.pool ? "true" : "false",
       onclick: () => { state.pool = p.key; state.filter = "all"; state.shown = PAGE; render(); },
@@ -292,19 +385,20 @@ function stat(label, value) {
 }
 
 function renderPool(pool) {
-  const rate = pool.total ? ((pool.five_count / pool.total) * 100).toFixed(2) + "%" : "-";
+  const g = state.data.game;
+  const rate = pool.total ? ((pool.top_count / pool.total) * 100).toFixed(2) + "%" : "-";
   const cards = [
     stat("总抽数", pool.total),
-    stat(`五星（${rate}）`, pool.five_count),
-    stat("四星", pool.four_count),
-    stat("五星平均抽数", pool.avg_pity5 ?? "-"),
-    stat("约消耗原石", pool.primogems.toLocaleString()),
+    stat(`${g.top_name}（${rate}）`, pool.top_count),
+    stat(g.second_name, pool.second_count),
+    stat(`${g.top_name}平均抽数`, pool.avg_pity_top ?? "-"),
+    stat(`约消耗${g.currency}`, pool.cost.toLocaleString()),
   ];
-  if (pool.key === "301") cards.push(stat("出过常驻角色", pool.standard_count));
+  if (g.has_standard && pool.standard_count) cards.push(stat("出过常驻角色", pool.standard_count));
 
   const parts = [el("div", { class: "stats" }, cards)];
   if (pool.hard_pity) parts.push(renderPity(pool));
-  parts.push(renderFiveStars(pool), renderTable(pool));
+  parts.push(renderTops(pool), renderTable(pool));
   if (state.data.updated_at) {
     parts.push(el("p", { class: "muted" }, `本地记录最近一次新增：${state.data.updated_at.replace("T", " ")}`));
   }
@@ -312,26 +406,31 @@ function renderPool(pool) {
 }
 
 function renderPity(pool) {
-  const cur = pool.current_pity5;
+  const g = state.data.game;
+  const cur = pool.current_pity_top;
   const level = pityLevel(pool, cur);
   const left = pool.hard_pity - cur;
+  const tick = pool.soft_pity
+    ? el("span", { class: "tick", title: `约 ${pool.soft_pity} 抽起概率大幅提升`, style: `left:${(pool.soft_pity / pool.hard_pity) * 100}%` })
+    : "";
   return el("section", { class: "card pity" },
     el("div", { class: "row" },
-      el("span", {}, `距离上一个五星已抽 `, el("b", {}, String(cur)), " 抽"),
-      el("span", { class: "muted" }, `距硬保底还有 ${left} 抽 · 四星已垫 ${pool.current_pity4} 抽`)),
+      el("span", {}, `距离上一个${g.top_name}已抽 `, el("b", {}, String(cur)), " 抽"),
+      el("span", { class: "muted" }, `距硬保底还有 ${left} 抽 · ${g.second_name}已垫 ${pool.current_pity_second} 抽`)),
     el("div", { class: "bar", role: "img", "aria-label": `已垫 ${cur} / ${pool.hard_pity}` },
       el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (cur / pool.hard_pity) * 100)}%` }),
-      el("span", { class: "tick", title: `约 ${pool.soft_pity} 抽起概率大幅提升`, style: `left:${(pool.soft_pity / pool.hard_pity) * 100}%` })),
+      tick),
   );
 }
 
-function renderFiveStars(pool) {
-  const fives = pool.records.filter((r) => r.rank === 5);
-  if (!fives.length) return el("p", { class: "muted" }, "这个卡池还没出过五星。");
-  const cap = pool.hard_pity || Math.max(...fives.map((r) => r.pity));
+function renderTops(pool) {
+  const g = state.data.game;
+  const tops = pool.records.filter((r) => r.tier === "top");
+  if (!tops.length) return el("p", { class: "muted" }, `这个卡池还没出过${g.top_name}。`);
+  const cap = pool.hard_pity || Math.max(...tops.map((r) => r.pity));
   return el("section", {},
-    el("h2", { class: "sec" }, "五星记录（从新到旧）"),
-    el("div", { class: "card five" }, fives.map((r) => {
+    el("h2", { class: "sec" }, `${g.top_name}记录（从新到旧）`),
+    el("div", { class: "card tops" }, tops.map((r) => {
       const level = pityLevel(pool, r.pity);
       return el("div", { class: "item" },
         el("span", { class: "name" }, r.name,
@@ -343,7 +442,9 @@ function renderFiveStars(pool) {
 }
 
 function renderTable(pool) {
-  const rows = pool.records.filter((r) => state.filter === "all" || (state.filter === "5" ? r.rank === 5 : r.rank >= 4));
+  const g = state.data.game;
+  const keep = { all: () => true, second: (r) => r.tier !== "other", top: (r) => r.tier === "top" }[state.filter];
+  const rows = pool.records.filter(keep);
   const shown = rows.slice(0, state.shown);
   const filterBtn = (key, label) => el("button", {
     "aria-pressed": state.filter === key ? "true" : "false",
@@ -351,12 +452,12 @@ function renderTable(pool) {
   }, label);
   return el("section", {},
     el("h2", { class: "sec" }, "全部记录"),
-    el("div", { class: "filters" }, filterBtn("all", "全部"), filterBtn("4", "四星及以上"), filterBtn("5", "只看五星")),
+    el("div", { class: "filters" }, filterBtn("all", "全部"), filterBtn("second", `${g.second_name}及以上`), filterBtn("top", `只看${g.top_name}`)),
     el("div", { class: "card tablewrap" }, el("table", {},
-      el("thead", {}, el("tr", {}, ["#", "时间", "名称", "类别", "星级", "垫抽"].map((h) => el("th", {}, h)))),
-      el("tbody", {}, shown.map((r) => el("tr", { class: `r${r.rank}` },
+      el("thead", {}, el("tr", {}, ["#", "时间", "名称", "类别", "品级", "垫抽"].map((h) => el("th", {}, h)))),
+      el("tbody", {}, shown.map((r) => el("tr", { class: r.tier },
         el("td", {}, String(r.n)), el("td", {}, r.time), el("td", { class: "nm" }, r.name),
-        el("td", {}, r.item_type), el("td", {}, "★".repeat(r.rank)), el("td", {}, r.pity ?? "")))))),
+        el("td", {}, r.item_type), el("td", {}, r.mark), el("td", {}, r.pity ?? "")))))),
     rows.length > shown.length
       ? el("button", { class: "more", onclick: () => { state.shown += PAGE; render(); } }, `显示更多（还有 ${rows.length - shown.length} 条）`)
       : "");
@@ -366,11 +467,17 @@ function renderTable(pool) {
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 隐私模式下可能不可用，忽略 */ } }
 
-$("#sync").addEventListener("click", startSync);
-$("#uid").addEventListener("change", (e) => { state.uid = e.target.value; safeSet("uid", state.uid); loadWishes().catch(onFatal); });
+$("#sync").addEventListener("click", () => startSync(state.game));
+$("#sync-all").addEventListener("click", () => startSync("all"));
+$("#uid").addEventListener("change", (e) => {
+  state.uid = e.target.value; safeSet(`uid:${state.game}`, state.uid); state.pool = null;
+  loadWishes().catch(onFatal);
+});
 $("#export-csv").addEventListener("click", () => doExport("csv"));
 $("#export-json").addEventListener("click", () => doExport("json"));
 $("#browse").addEventListener("click", browseGameDir);
+$("#diagnose").addEventListener("click", runDiagnose);
+$("#copy-report").addEventListener("click", copyReport);
 
 // 后台接口是窗口加载完页面之后才注入的，要等 pywebviewready 事件
 const boot = () => init().catch(onFatal);
