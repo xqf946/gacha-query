@@ -1,7 +1,7 @@
 name: build-windows
 
-# 手动触发：Actions 页面 → build-windows → Run workflow。完成后在这次运行的页面底部下载 GenshinWishLog。
-# 打版本标签（例如 v0.1.0）时，还会把 exe 挂到 Releases 页面，得到一个固定的下载链接。
+# 手动触发：Actions 页面 → build-windows → Run workflow，完成后在这次运行页面底部下载成品。
+# 打版本标签（例如 v0.2.0）时，还会把安装包和免安装压缩包发布到 Releases 页面。
 on:
   workflow_dispatch:
   push:
@@ -19,47 +19,92 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
       # 在真正的 Windows 上跑一遍全部测试（路径、换行符等问题只会在 Windows 上暴露）
       - name: Run tests
         run: python -m unittest discover -s . -p "test_*.py" -t .
 
-      - name: Build exe
-        run: |
-          pip install pyinstaller
-          pyinstaller --noconfirm --clean --onefile --name GenshinWishLog --add-data "wishlog/static;wishlog/static" run.py
-
-      # 真的把打好的 exe 跑起来，确认页面能打开，再放行
-      - name: Smoke-test the exe
+      - name: Read version
         shell: pwsh
         run: |
-          $data = Join-Path $env:RUNNER_TEMP "smoke-data"
-          $p = Start-Process -FilePath ".\dist\GenshinWishLog.exe" `
-            -ArgumentList "--no-browser", "--port", "8765", "--data-dir", $data `
-            -PassThru -WindowStyle Hidden
-          $ok = $false
-          foreach ($i in 1..60) {
-            Start-Sleep -Milliseconds 500
-            try {
-              $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/" -TimeoutSec 2
-              $state = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/api/state" -TimeoutSec 2
-              if ($page.StatusCode -eq 200 -and $page.Content -match "renderEmpty" -and $state.Content -match "uids") {
-                $ok = $true
-                break
-              }
-            } catch { }
+          $version = python -c "import wishlog; print(wishlog.__version__)"
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$version") {
+            throw "Tag ${{ github.ref_name }} does not match wishlog.__version__ ($version)"
           }
+
+      # onedir：一个文件夹，启动快、被杀毒软件误报的概率比“单文件 exe”低
+      - name: Build app
+        run: pyinstaller --noconfirm --clean --onedir --windowed --name GenshinWishLog --icon assets/icon.ico --add-data "wishlog/static;wishlog/static" --collect-all webview run.py
+
+      # 真的把软件打开：窗口要能创建，界面要能通过后台接口画出演示数据，才算通过
+      - name: Self-test the built app
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "selftest.json"
+          Remove-Item $out -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath ".\dist\GenshinWishLog\GenshinWishLog.exe" -ArgumentList "--selftest-out", $out -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            taskkill /F /T /PID $p.Id | Out-Null
+            throw "Self-test timed out after 120s"
+          }
+          if (-not (Test-Path $out)) { throw "No self-test result was written (exit code $($p.ExitCode))" }
+          $text = Get-Content $out -Raw -Encoding UTF8
+          Write-Host $text
+          if (($text | ConvertFrom-Json).ok -ne $true) { throw "Self-test reported a failure" }
+
+      - name: Show startup error log (on failure)
+        if: failure()
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:LOCALAPPDATA "GenshinWishLog\error.log"
+          if (Test-Path $log) { Get-Content $log -Raw } else { Write-Host "No error.log was written" }
+
+      # 截一张真实 Windows 桌面上的软件窗口，用来目视检查（失败也不影响发布）
+      - name: Screenshot the running app
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ".\dist\GenshinWishLog\GenshinWishLog.exe" -ArgumentList "--demo" -PassThru
+          Start-Sleep -Seconds 15
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save((Join-Path $env:RUNNER_TEMP "window.png"))
           taskkill /F /T /PID $p.Id | Out-Null
-          if (-not $ok) { throw "The built exe did not serve the page." }
-          Write-Host "Smoke test passed."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-screenshot
+          path: ${{ runner.temp }}/window.png
+          if-no-files-found: ignore
+
+      - name: Make portable zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\GenshinWishLog -DestinationPath "dist\GenshinWishLog-$env:APP_VERSION-portable.zip"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" installer\GenshinWishLog.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v4
         with:
           name: GenshinWishLog
-          path: dist/GenshinWishLog.exe
+          path: |
+            dist/GenshinWishLog-Setup-*.exe
+            dist/GenshinWishLog-*-portable.zip
 
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/GenshinWishLog.exe --title "${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/GenshinWishLog-Setup-*.exe, dist/GenshinWishLog-*-portable.zip) --title "${{ github.ref_name }}" --generate-notes

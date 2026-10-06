@@ -47,6 +47,9 @@
   details.adv .fields { display: grid; gap: 8px; margin-top: 10px; }
   details.adv label { display: grid; gap: 4px; font-size: 13px; }
   details.adv input { width: 100%; }
+  details.adv .pick { display: flex; gap: 8px; }
+  footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
+  footer a { color: var(--accent); }
   .empty h2 { margin: 0 0 8px; font-size: 18px; }
   .empty ol { padding-left: 20px; margin: 10px 0; }
   .empty li { margin: 4px 0; }
@@ -104,7 +107,10 @@
     <summary>高级：自动找不到时手动指定</summary>
     <div class="fields">
       <label>游戏安装目录（里面有 YuanShen.exe 的文件夹）
-        <input id="game-dir" placeholder="例如 D:\Genshin Impact\Genshin Impact Game" autocomplete="off">
+        <span class="pick">
+          <input id="game-dir" placeholder="例如 D:\Genshin Impact\Genshin Impact Game" autocomplete="off">
+          <button id="browse" type="button">浏览…</button>
+        </span>
       </label>
       <label>或者直接粘贴祈愿链接（填了这个就不去读游戏缓存）
         <input id="manual-url" placeholder="https://public-operation-hk4e.mihoyo.com/gacha_info/api/getGachaLog?..." autocomplete="off">
@@ -114,6 +120,7 @@
   </details>
 
   <main id="content"></main>
+  <footer id="footer" class="muted"></footer>
 </div>
 
 <script>
@@ -135,37 +142,23 @@ function el(tag, props = {}, ...kids) {
 const state = { uid: null, data: null, pool: "301", filter: "all", shown: 100 };
 const PAGE = 100;
 
-class Offline extends Error {}
+// 后台方法由软件窗口注入：window.pywebview.api.<方法名>(...)，返回 Promise
+const inApp = () => !!(window.pywebview && window.pywebview.api);
+const call = (name, ...args) => window.pywebview.api[name](...args);
 
-async function api(path, options) {
-  let res;
-  try { res = await fetch(path, options); } catch { throw new Offline(); }
-  const body = await res.json();
-  return { ok: res.ok, status: res.status, body };
-}
-
-// 页面是文件直接打开的，或者黑色窗口被关掉后，都会连不上后台程序
 function onFatal(e) {
   setRunning(false);
-  if (e instanceof Offline) renderOffline(); else setStatus("error", `出错了：${e.message}`);
+  setStatus("error", `出错了：${(e && e.message) || e}`);
 }
 
-function renderOffline() {
-  const fileMode = !location.protocol.startsWith("http");  // 直接打开文件时是 file: 等，不是 http:
+// 这个页面只能在软件的窗口里用；如果被人直接拿浏览器打开，就没有后台可以调用
+function renderNotInApp() {
   $("#sync").disabled = true;
   $("#uid").hidden = $("#export-csv").hidden = $("#export-json").hidden = true;
-  setStatus("error", fileMode
-    ? "现在打开的是网页文件本身，程序还没有启动，所以什么都显示不出来。"
-    : "连不上后台程序，它可能已经退出了（黑色窗口是不是被关掉了？）。");
+  setStatus("error", "这个页面需要在「原神抽卡记录」软件的窗口里使用，不能直接用浏览器打开。");
   $("#content").replaceChildren(el("section", { class: "card empty" },
-    el("h2", {}, "需要先启动程序"),
-    el("p", {}, "这个页面不能直接双击打开，要先启动程序，再由程序自动打开浏览器："),
-    el("ol", {},
-      el("li", {}, "Windows：双击文件夹里的「启动.bat」"),
-      el("li", {}, "Mac：双击文件夹里的「启动.command」"),
-      el("li", {}, "等浏览器自动弹出页面，地址类似 http://127.0.0.1:8765/ 。用完后关掉黑色窗口即可退出。"),
-    ),
-    el("p", { class: "muted" }, "如果黑色窗口提示找不到 Python，请先安装 Python 3（python.org），Windows 安装时要勾选 “Add python.exe to PATH”。"),
+    el("h2", {}, "请打开软件"),
+    el("p", {}, "请从开始菜单或桌面快捷方式启动「原神抽卡记录」，在它自己的窗口里使用。"),
   ));
 }
 
@@ -177,10 +170,18 @@ function setStatus(kind, text) {
 
 // ---------- 加载 ----------
 async function init() {
-  const { body } = await api("/api/state");
-  fillUids(body.uids);
-  if (body.sync.state === "running") { setRunning(true); poll(); }
+  const [st, info] = await Promise.all([call("get_state"), call("app_info")]);
+  renderFooter(info);
+  fillUids(st.uids);
+  if (st.sync.state === "running") { setRunning(true); poll(); }
   if (state.uid) await loadWishes(); else renderEmpty();
+}
+
+function renderFooter(info) {
+  $("#footer").replaceChildren(
+    `数据保存在 ${info.data_dir}`, " · ",
+    el("a", { href: "#", onclick: (e) => { e.preventDefault(); call("open_data_dir").catch(onFatal); } }, "打开文件夹"),
+    ` · v${info.version}`);
 }
 
 function fillUids(uids) {
@@ -194,11 +195,11 @@ function fillUids(uids) {
 }
 
 async function loadWishes() {
-  const { ok, body } = await api(`/api/wishes?uid=${encodeURIComponent(state.uid)}`);
-  if (!ok) { setStatus("error", body.error || "读取记录失败"); return; }
-  state.data = body;
+  const data = await call("get_wishes", state.uid);
+  if (data.error) { setStatus("error", data.error); return; }
+  state.data = data;
   state.shown = PAGE;
-  if (!body.pools.some((p) => p.key === state.pool)) state.pool = body.pools[0].key;
+  if (!data.pools.some((p) => p.key === state.pool)) state.pool = data.pools[0].key;
   render();
 }
 
@@ -213,32 +214,43 @@ async function startSync() {
   setRunning(true);
   setStatus("info", "正在开始…");
   try {
-    const { status, body } = await api("/api/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: $("#manual-url").value, game_dir: $("#game-dir").value }),
-    });
-    if (status === 202 || status === 409) poll();
-    else { setRunning(false); setStatus("error", body.error || "无法开始更新"); }
+    await call("start_sync", $("#manual-url").value, $("#game-dir").value);
+    poll();   // 已经有更新在跑时也一样：接着显示它的进度
   } catch (e) { onFatal(e); }
 }
 
 async function poll() {
   try {
-    const { body } = await api("/api/sync/status");
-    if (body.state === "running") {
-      setStatus("info", body.message);
+    const job = await call("sync_status");
+    if (job.state === "running") {
+      setStatus("info", job.message);
       setTimeout(poll, 600);
       return;
     }
     setRunning(false);
-    if (body.state === "error") { setStatus("error", body.message); return; }
-    setStatus("ok", body.message);
-    const { body: st } = await api("/api/state");
-    if (body.uid) state.uid = body.uid;
+    if (job.state === "error") { setStatus("error", job.message); return; }
+    setStatus("ok", job.message);
+    const st = await call("get_state");
+    if (job.uid) state.uid = job.uid;
     fillUids(st.uids);
     safeSet("uid", state.uid);
     await loadWishes();
+  } catch (e) { onFatal(e); }
+}
+
+// ---------- 需要系统对话框的操作 ----------
+async function doExport(fmt) {
+  try {
+    const r = await call("export_records", state.uid, fmt);
+    if (r.error) setStatus("error", r.error);
+    else if (r.ok) setStatus("ok", `已导出到：${r.path}`);
+  } catch (e) { onFatal(e); }
+}
+
+async function browseGameDir() {
+  try {
+    const r = await call("pick_game_dir");
+    if (r.path) $("#game-dir").value = r.path;
   } catch (e) { onFatal(e); }
 }
 
@@ -355,11 +367,18 @@ function safeGet(k) { try { return localStorage.getItem(k); } catch { return nul
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 隐私模式下可能不可用，忽略 */ } }
 
 $("#sync").addEventListener("click", startSync);
-$("#uid").addEventListener("change", (e) => { state.uid = e.target.value; safeSet("uid", state.uid); loadWishes(); });
-$("#export-csv").addEventListener("click", () => { location.href = `/api/export?uid=${state.uid}&fmt=csv`; });
-$("#export-json").addEventListener("click", () => { location.href = `/api/export?uid=${state.uid}&fmt=json`; });
+$("#uid").addEventListener("change", (e) => { state.uid = e.target.value; safeSet("uid", state.uid); loadWishes().catch(onFatal); });
+$("#export-csv").addEventListener("click", () => doExport("csv"));
+$("#export-json").addEventListener("click", () => doExport("json"));
+$("#browse").addEventListener("click", browseGameDir);
 
-init().catch(onFatal);
+// 后台接口是窗口加载完页面之后才注入的，要等 pywebviewready 事件
+const boot = () => init().catch(onFatal);
+if (inApp()) boot();
+else {
+  window.addEventListener("pywebviewready", boot, { once: true });
+  setTimeout(() => { if (!inApp()) renderNotInApp(); }, 5000);
+}
 </script>
 </body>
 </html>

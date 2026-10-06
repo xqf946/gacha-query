@@ -1,0 +1,2 @@
+# 运行软件所需（Windows 上 pywebview 会自动带上 pythonnet）
+pywebview>=5.3
