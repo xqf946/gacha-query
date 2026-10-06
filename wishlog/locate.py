@@ -19,6 +19,7 @@ LOG_RELATIVE = ("AppData", "LocalLow", "miHoYo", "原神", "output_log.txt")
 
 # 日志里找不到时，在各个盘符下试这些常见的安装位置。
 DEFAULT_ROOTS = (
+    "miHoYo Launcher/games/Genshin Impact Game",   # 实际用户的安装位置（来自真机截图）
     "Program Files/Genshin Impact/Genshin Impact Game",
     "Genshin Impact/Genshin Impact Game",
     "Program Files/HoYoPlay/games/Genshin Impact game",
@@ -118,13 +119,78 @@ def extract_wish_urls(blob: bytes) -> list[str]:
     return urls
 
 
+def read_file_shared(path) -> bytes:
+    """读整个文件，并允许别的进程同时读、写、删除它。
+
+    游戏开着的时候，缓存文件正被它打开着。Python 自带的 open() 在 Windows 上不允许
+    “别的进程同时删除或改名这个文件”，只要游戏那边的句柄带了删除权限，open() 就会
+    被拒绝（报 Permission denied）。这里直接调用 Windows 的 CreateFile，把三种共享
+    方式都打开，行为和 Node.js 等工具一致。其他系统没有这个问题，用普通读取。
+    """
+    path = Path(path)
+    if os.name != "nt":
+        return path.read_bytes()
+    return _read_shared_windows(str(path))
+
+
+def _read_shared_windows(path: str) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.ReadFile.argtypes = [
+        wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    ]
+    kernel32.ReadFile.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    generic_read, share_read_write_delete, open_existing, attribute_normal = 0x80000000, 0x7, 3, 0x80
+    handle = kernel32.CreateFileW(
+        path, generic_read, share_read_write_delete, None, open_existing, attribute_normal, None
+    )
+    if handle is None or handle == ctypes.c_void_p(-1).value:  # INVALID_HANDLE_VALUE
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        chunks = []
+        buffer = ctypes.create_string_buffer(1 << 20)
+        count = wintypes.DWORD(0)
+        while True:
+            if not kernel32.ReadFile(handle, buffer, len(buffer), ctypes.byref(count), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if count.value == 0:
+                return b"".join(chunks)
+            chunks.append(buffer.raw[: count.value])
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _explain_read_failure(path: Path, error: OSError) -> str:
+    code = getattr(error, "winerror", None)
+    detail = f"（Windows 错误码 {code}）" if code else f"（{error}）"
+    if code in (32, 33):   # 共享冲突 / 锁定冲突：别的程序独占了这个文件
+        hint = "文件正被游戏独占使用。请先完全退出游戏，再点一次「更新记录」。"
+    elif code == 5 or isinstance(error, PermissionError):
+        hint = ("没有权限读取这个文件。如果游戏是以管理员身份运行的，本软件也需要："
+                "右键软件图标 → 以管理员身份运行。")
+    else:
+        hint = "可以先退出游戏再试一次。"
+    return f"读取游戏缓存文件失败{detail}：\n{path}\n{hint}"
+
+
 def find_wish_urls(data_dir: Path) -> list[str]:
     """返回缓存里的祈愿链接，最新的在前，同一个 authkey 只保留一条。"""
     cache = find_cache_file(data_dir)
     try:
-        blob = cache.read_bytes()
+        blob = read_file_shared(cache)
     except OSError as e:
-        raise LocateError(f"读取缓存文件失败（{e}）。可以先关闭游戏再试一次。") from e
+        raise LocateError(_explain_read_failure(cache, e)) from e
 
     result: list[str] = []
     keys: set[str] = set()
