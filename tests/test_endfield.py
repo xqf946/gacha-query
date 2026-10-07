@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.fakes import EF_LINK, EF_TOKEN, FakeEndfield, ef_char, ef_weapon
+from tests.fakes import EF_ACCOUNT_TOKEN, EF_LINK, EF_TOKEN, FakeEndfield, ef_char, ef_weapon
 from wishlog.client import ApiError, AuthExpired, InvalidUrl
 from wishlog.games import ENDFIELD
 from wishlog.games import endfield
@@ -302,6 +302,98 @@ class WholeGame(unittest.TestCase):
         self.assertIn("/api/record/char", text)
         self.assertNotIn(EF_TOKEN, text)
         self.assertEqual(self.store.uids(), [])
+
+    # ---- 账号令牌这条路（日志里的令牌官方不认时用） ----
+    def test_a_pasted_account_token_finds_the_character_without_touching_the_log(self):
+        for text in (EF_ACCOUNT_TOKEN, f'{{"status":0,"data":{{"content":"{EF_ACCOUNT_TOKEN}"}}}}', f"  {EF_ACCOUNT_TOKEN}\n"):
+            fake = FakeEndfield()
+            client = endfield.EndfieldClient(transport=fake, sleep=lambda s: None)
+            with mock.patch.object(endfield, "home_dir", return_value=Path(self.tmp.name) / "no-such-home"):
+                auth = ENDFIELD.connect(client, text, "")
+            self.assertEqual((auth.uid, auth.nickname, auth.server_id, auth.token), ("987654321", "管理员", "1", EF_TOKEN), text)
+            self.assertTrue(auth.uid_known)
+            hosts = [c[1] for c in fake.calls]
+            self.assertEqual(hosts, ["as.hypergryph.com", "binding-api-account-prod.hypergryph.com",
+                                     "binding-api-account-prod.hypergryph.com"])      # 授权、查绑定、换角色令牌；没碰日志，也没问 query_role_list
+
+    def test_syncing_with_the_account_token_end_to_end(self):
+        auth = ENDFIELD.connect(self.client, EF_ACCOUNT_TOKEN, "")
+        result = ENDFIELD.sync(self.client, auth, self.store)
+        self.assertEqual(result["uid"], "987654321")
+        self.assertEqual(result["new"]["特许寻访"], 8)
+        self.assertNotIn(EF_ACCOUNT_TOKEN, repr(auth))
+        self.assertNotIn(EF_TOKEN, repr(auth))
+        saved = "".join(p.read_text(encoding="utf-8") for p in self.store.root.glob("*.json"))
+        self.assertNotIn(EF_ACCOUNT_TOKEN, saved)       # 令牌绝不落盘
+        self.assertNotIn(EF_TOKEN, saved)
+
+    def test_the_records_land_in_the_same_account_whichever_way_you_connect(self):
+        by_token = ENDFIELD.sync(self.client, ENDFIELD.connect(self.client, EF_ACCOUNT_TOKEN, ""), self.store)
+        by_link = ENDFIELD.sync(self.client, ENDFIELD.connect(self.client, EF_LINK, ""), self.store)
+        self.assertEqual(by_token["uid"], by_link["uid"])
+        self.assertEqual(by_link["total_new"], 0)                 # 两条路取到的是同一批记录，不会重复
+
+    def test_a_wrong_account_token_says_so(self):
+        self.fake.account_token = "SOMETHING-ELSE-0123456789"
+        with self.assertRaisesRegex(AuthExpired, "账号令牌"):
+            ENDFIELD.connect(self.client, EF_ACCOUNT_TOKEN, "")
+
+    def test_an_account_without_an_endfield_character(self):
+        self.fake.bindings = []
+        with self.assertRaisesRegex(ApiError, "没有绑定终末地"):
+            ENDFIELD.connect(self.client, EF_ACCOUNT_TOKEN, "")
+
+    def test_several_characters_use_the_first_and_say_so(self):
+        self.fake.bindings = [("987654321", "甲"), ("123456789", "乙")]
+        auth = ENDFIELD.connect(self.client, EF_ACCOUNT_TOKEN, "")
+        self.assertEqual((auth.uid, auth.nickname), ("987654321", "甲"))
+        result = ENDFIELD.sync(self.client, auth, self.store)
+        self.assertTrue(any("2 个终末地角色" in w and "987654321" in w for w in result["warnings"]))
+
+    def test_text_that_is_neither_a_link_nor_a_token_is_refused_before_any_request(self):
+        for text in ("hello", "{not json", "12345"):
+            with self.assertRaises(InvalidUrl, msg=text):
+                ENDFIELD.connect(self.client, text, "")
+        self.assertEqual(self.fake.calls, [])
+
+    def test_a_link_to_another_site_is_not_mistaken_for_a_token(self):
+        with self.assertRaises(InvalidUrl):
+            ENDFIELD.connect(self.client, "https://evil.example.com/page/gacha_char?u8_token=" + "a" * 30, "")
+        self.assertEqual(self.fake.calls, [])
+
+    # ---- 日志里的令牌官方不认（官方调整了日志）：要把人引到账号令牌 ----
+    def test_a_dead_log_token_points_the_user_to_the_account_token(self):
+        self.fake.token = "TOKEN-ISSUED-LATER"            # 官方现在认的和日志里的不一样
+        with mock.patch.object(endfield, "home_dir", return_value=self.home):
+            with self.assertRaises(AuthExpired) as ctx:
+                ENDFIELD.connect(self.client, "", "")
+        text = str(ctx.exception)
+        first = text.splitlines()[0]
+        self.assertIn("日志里的凭证", first)
+        self.assertIn("query_role_list", first)               # 官方的回复也在第一行里，“更新全部”只显示第一行也够用
+        self.assertIn("多半走不通", first)
+        self.assertIn("账号令牌", first)
+        self.assertIn("高级", text)                           # 只指路，做法在输入框下面的说明里，不在提示条里重复一遍
+        self.assertNotIn(EF_TOKEN, text)
+
+    def test_no_link_in_the_log_also_offers_the_account_token(self):
+        make_home(Path(self.tmp.name) / "h3", "nothing useful here\n")
+        with mock.patch.object(endfield, "home_dir", return_value=Path(self.tmp.name) / "h3"):
+            with self.assertRaisesRegex(LocateError, "账号令牌"):
+                ENDFIELD.connect(self.client, "", "")
+
+    def test_a_pasted_link_that_the_server_refuses_is_reported_as_such(self):
+        self.fake.token = "OTHER"
+        with self.assertRaises(AuthExpired) as ctx:
+            ENDFIELD.connect(self.client, EF_LINK, "")
+        self.assertNotIn("日志里的凭证", str(ctx.exception).splitlines()[0])      # 链接是用户贴的，不是从日志读的
+
+    def test_the_game_asks_the_ui_for_a_hidden_input_and_explains_both_ways(self):
+        meta = ENDFIELD.meta()
+        self.assertTrue(meta["manual_secret"])
+        self.assertFalse(meta["manual_required"])             # 日志好用的话不必手动粘贴
+        self.assertIn("账号令牌", meta["manual_label"])
+        self.assertIn("account/info/hg", meta["manual_help"])
 
     def test_connect_with_a_pasted_link(self):
         auth = ENDFIELD.connect(self.client, EF_LINK, "/does/not/exist")

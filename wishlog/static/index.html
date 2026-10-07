@@ -7,31 +7,31 @@
 <style>
   :root {
     color-scheme: light dark;   /* 滚动条、下拉框这些系统控件也跟着变 */
-    --bg: #e6dfd3; --card: #f4f0e8; --side: #dcd4c7; --ink: #3f3b38; --muted: #5a544c; --line: #d2c9bb;
-    --accent: #4d657e; --accent-ink: #f7f3ec;
-    --top: #86703e; --gold-ink: #695525; --top-bg: #eee3c8; --second: #6c5c7f; --second-bg: #e7e0e9; --other: #6b6257;
-    --good: #597457; --warn: #86703e; --bad: #9d5c55; --track: #d6cdbf;
-    --ok-bg: #e0e7da; --err-bg: #efdad5; --info-bg: #dfe6ec; --warn-bg: #eee3c8;
+    --bg: #f6f5f1; --card: #ffffff; --side: #ece9e0; --ink: #23221f; --muted: #6f6c64; --line: #e4e1d8;
+    --accent: #3b5bdb; --accent-ink: #ffffff;
+    --top: #b7791f; --top-bg: #fbf0d9; --second: #7048c7; --second-bg: #efe8fb; --other: #5d6b7a;
+    --good: #2f855a; --warn: #b7791f; --bad: #c53030; --track: #ece9e0;
+    --ok-bg: #e6f4ea; --err-bg: #fdeaea; --info-bg: #e8eefc; --warn-bg: #fdf3dc;
   }
   /* 外观：默认跟随系统；用户在侧栏点「外观」手动选了浅色/深色时，html 上会有 data-theme。
      下面两处深色变量必须一模一样（有测试检查）。 */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #2b2825; --card: #3f3b38; --side: #232120; --ink: #e6dfd3; --muted: #c0b9af; --line: #4b4641;
-      --accent: #98acbe; --accent-ink: #2b2825;
-      --top: #c9b58f; --gold-ink: #d8c79f; --top-bg: #4a4234; --second: #b0a1be; --second-bg: #413a48; --other: #b0a698;
-      --good: #9caf9a; --warn: #c9b58f; --bad: #c8a39e; --track: #4f4a45;
-      --ok-bg: #38423a; --err-bg: #4a3a38; --info-bg: #36404a; --warn-bg: #4a4234;
+      --bg: #17171a; --card: #202024; --side: #1d1d21; --ink: #ecebe6; --muted: #9b988f; --line: #33333a;
+      --accent: #748ffc; --accent-ink: #11131a;
+      --top: #f2c14e; --top-bg: #3a3119; --second: #b79cf5; --second-bg: #2d2640; --other: #8d9aa8;
+      --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
+      --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45; --warn-bg: #3a3119;
     }
   }
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #2b2825; --card: #3f3b38; --side: #232120; --ink: #e6dfd3; --muted: #c0b9af; --line: #4b4641;
-    --accent: #98acbe; --accent-ink: #2b2825;
-    --top: #c9b58f; --gold-ink: #d8c79f; --top-bg: #4a4234; --second: #b0a1be; --second-bg: #413a48; --other: #b0a698;
-    --good: #9caf9a; --warn: #c9b58f; --bad: #c8a39e; --track: #4f4a45;
-    --ok-bg: #38423a; --err-bg: #4a3a38; --info-bg: #36404a; --warn-bg: #4a4234;
+    --bg: #17171a; --card: #202024; --side: #1d1d21; --ink: #ecebe6; --muted: #9b988f; --line: #33333a;
+    --accent: #748ffc; --accent-ink: #11131a;
+    --top: #f2c14e; --top-bg: #3a3119; --second: #b79cf5; --second-bg: #2d2640; --other: #8d9aa8;
+    --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
+    --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45; --warn-bg: #3a3119;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* 自己写的 display 样式不能把 hidden 的元素又显示出来 */
@@ -109,7 +109,7 @@
   .tops .name { font-weight: 600; }
   .tops .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
   .tops .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .tops .num.good { color: var(--good); } .tops .num.warn { color: var(--gold-ink); } .tops .num.bad { color: var(--bad); }
+  .tops .num.good { color: var(--good); } .tops .num.warn { color: var(--warn); } .tops .num.bad { color: var(--bad); }
   .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; font-weight: 500; }
   .filters { display: flex; gap: 8px; margin-bottom: 8px; }
   .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -117,7 +117,7 @@
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 13px; }
-  tr.top td.nm { color: var(--gold-ink); font-weight: 700; } tr.top { background: var(--top-bg); }
+  tr.top td.nm { color: var(--top); font-weight: 700; } tr.top { background: var(--top-bg); }
   tr.second td.nm { color: var(--second); font-weight: 600; } tr.second { background: var(--second-bg); }
   tr.other td.nm { color: var(--other); }
   .more { display: block; margin: 12px auto 0; }
@@ -199,7 +199,7 @@ function el(tag, props = {}, ...kids) {
 }
 
 const state = { games: [], game: null, uid: null, data: null, pool: null, filter: "all", shown: 100,
-               running: false, prevManualRequired: false, theme: "auto" };
+               running: false, autoOpenedFor: null, theme: "auto" };
 const PAGE = 100;
 
 // 后台方法由软件窗口注入：window.pywebview.api.<方法名>(...)，返回 Promise
@@ -296,10 +296,17 @@ function applyManualField() {
   $("#manual-label").textContent = g.manual_label || "或者直接粘贴记录链接（填了这个就不去读游戏文件）";
   $("#manual-help").textContent = g.manual_help || "记录链接相当于一把有时效的钥匙，别发给不信任的人。";
   // 明日方舟必须手动粘贴令牌，切到它时自动展开「高级」；离开它时再收起，别一直开着占地方。
-  // 只在“是否需要手动输入”变化的那一刻动，用户自己展开或收起的，不去打扰。
-  if (g.manual_required) $("details.adv").open = true;
-  else if (state.prevManualRequired) $("details.adv").open = false;
-  state.prevManualRequired = !!g.manual_required;
+  // 只收起“程序自己展开的”，用户自己展开或收起的，不去打扰。
+  if (g.manual_required) openAdvancedFor(g);
+  else if (state.autoOpenedFor && state.autoOpenedFor !== g.key) {
+    $("details.adv").open = false;
+    state.autoOpenedFor = null;
+  }
+}
+
+function openAdvancedFor(game) {
+  $("details.adv").open = true;
+  state.autoOpenedFor = game.key;
 }
 
 function fillUids() {
@@ -349,7 +356,13 @@ async function poll() {
       return;
     }
     setRunning(false);
-    if (job.state === "error") { setStatus("error", job.message); return; }
+    if (job.state === "error") {
+      setStatus("error", job.message);
+      // 更新失败时，如果这个游戏有“手动粘贴凭证”的办法（终末地读日志失败后用账号令牌），直接把它展开给用户看
+      const g = currentGame();
+      if (g && g.manual_help && job.game === g.key) openAdvancedFor(g);
+      return;
+    }
     setStatus(job.warn ? "warn" : "ok", job.message);
     const st = await call("get_state");
     state.games = st.games;

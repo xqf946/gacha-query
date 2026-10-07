@@ -139,6 +139,7 @@ class FakeWuwaApi:
 
 # ---------- 终末地 ----------
 EF_TOKEN = "U8TOKEN-abc123"
+EF_ACCOUNT_TOKEN = "EFACCOUNT-token-0123456789abcdef"     # 用户从官网复制的账号令牌
 EF_LINK = (
     "https://ef-webview.hypergryph.com/page/gacha_char?pool_id=special_1_0_3&platform=Windows"
     f"&channel=1&subChannel=1&lang=zh-cn&server=1&u8_token={EF_TOKEN}"
@@ -175,6 +176,8 @@ class FakeEndfield:
         self.fail_pool = {}             # {"rerun": (code, msg)}
         self.role_status = 0
         self.role_uid = None            # 默认用 uid；设成 "" 可以模拟接口没给 uid
+        self.account_token = EF_ACCOUNT_TOKEN
+        self.bindings = None            # 账号令牌这条路：[(uid, 昵称)]；默认是 [(uid, "管理员")]
 
     def _page(self, items: list, seq_id):
         start = 0
@@ -187,6 +190,26 @@ class FakeEndfield:
         parsed = urlparse(url)
         query = dict(parse_qsl(parsed.query))
         self.calls.append((method, parsed.hostname, parsed.path, query, dict(headers), body))
+        if parsed.hostname == "as.hypergryph.com":                    # 账号令牌 → 授权令牌
+            if (body or {}).get("token") != self.account_token or body.get("appCode") != "be36d44aa36bfb5b":
+                return {"status": 3, "msg": "token expired"}
+            return {"status": 0, "msg": "OK", "data": {"token": "EF-OAUTH"}}
+        if parsed.hostname == "binding-api-account-prod.hypergryph.com":
+            if parsed.path.endswith("/binding_list"):
+                if query.get("token") != "EF-OAUTH" or query.get("appCode") != "endfield":
+                    return {"status": 3, "msg": "bad oauth"}
+                pairs = self.bindings if self.bindings is not None else [(self.uid, "管理员")]
+                return {"status": 0, "msg": "OK", "data": {"list": [
+                    {"appCode": "arknights", "bindingList": [{"uid": "111", "channelName": "官服"}]},
+                    {"appCode": "endfield", "appName": "终末地", "bindingList": [
+                        {"uid": uid, "channelName": "官服", "nickName": nick,
+                         "roles": [{"serverId": "1", "serverName": "China", "nickName": nick, "roleId": "555"}]}
+                        for uid, nick in pairs]},
+                ]}}
+            if parsed.path.endswith("/u8_token_by_uid"):
+                if body.get("token") != "EF-OAUTH":
+                    return {"status": 3, "msg": "bad oauth"}
+                return {"status": 0, "msg": "OK", "data": {"token": self.token}}
         if parsed.hostname == "u8.hypergryph.com":
             if not body or body.get("token") != self.token:
                 return {"status": 3, "msg": "token invalid"}

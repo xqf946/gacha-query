@@ -134,6 +134,22 @@ def _interaction_checks(window) -> dict:
     plain_again = run("document.querySelector('#manual-url').type") == "text"
     checks["advanced_panel_follows_the_game"] = bool(opened and closed)
     checks["token_box_only_hides_text_for_arknights"] = bool(token_is_hidden and plain_again)
+    # 终末地读日志失败时（这里的自检环境里没有这个游戏），「高级」要自动展开，把「粘贴账号令牌」的说明亮出来；换游戏再收起
+    run("document.querySelector('.game[data-key=endfield]').click(); 0")
+    pause()
+    before = run("document.querySelector('details.adv').open")
+    run("document.querySelector('#sync').click(); 0")
+    deadline = time.time() + 15
+    while time.time() < deadline and run("document.querySelector('#sync').disabled") is True:
+        time.sleep(0.4)
+    pause()
+    opened_after_failure = run("document.querySelector('details.adv').open") is True
+    shows_help = "账号令牌" in (run("document.querySelector('#manual-help').textContent") or "")
+    run("document.querySelector('.game[data-key=genshin]').click(); 0")
+    pause()
+    closed_again = run("document.querySelector('details.adv').open") is False
+    checks["advanced_opens_after_a_failed_update_when_a_token_can_help"] = bool(
+        before is False and opened_after_failure and shows_help and closed_again)
     # 侧栏的「外观」按钮：跟随系统 → 浅色 → 深色 → 回到跟随系统，每一步页面真的换了配色
     seen = []
     for _ in range(3):

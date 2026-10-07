@@ -1,7 +1,10 @@
 """明日方舟：终末地（鹰角）。
 
-和米哈游的游戏思路一样：游戏打开“寻访记录”页面时，会在本机日志里留下一条带 u8_token 的页面链接，
-软件从日志里读出它，再用它去官方接口取记录。软件不登录账号，不接触账号密码。
+有两条路拿到取记录要用的凭证（u8_token），软件都不登录账号、不接触账号密码：
+1. 读日志：游戏打开“寻访记录”页面时，会在本机日志里留下一条带 u8_token 的页面链接。
+   但官方可能已经调整了日志的写法，这条路在有的机器上已经走不通（官方不再认日志里的令牌）。
+2. 账号令牌：用户自己在浏览器里登录官网，把官网页面上显示的账号令牌粘贴进来，
+   软件用它换出 u8_token（和明日方舟共用同一套账号接口，见 hg_account.py）。
 
 接口地址、请求参数、卡池类型、返回结构、保底规则，参考了几个开源的终末地记录工具
 （bhaoo/endfield-gacha、RoLingG/endfield-gacha-app、AceDroidX/arknights-gacha-export 的 API.md 等），
@@ -25,6 +28,7 @@ from ..locate import (
 )
 from ..net import default_transport, format_ts
 from .base import SIX_STARS, Game, Pool
+from .hg_account import HgAccount, parse_account_token
 
 WEB_HOST = "https://ef-webview.hypergryph.com"
 U8_HOST = "https://u8.hypergryph.com"
@@ -34,6 +38,19 @@ _LINK_RE = re.compile(r"""https://ef-webview\.hypergryph\.com/page/gacha_[^\s"'<
 _FEED_CHAR, _FEED_WEAPON = 1, 2
 MAX_TRIES = 6              # 日志里有好几条链接、token 又有几种写法时，最多试几次
 UNKNOWN_UID = "0"          # 官方没告诉我们 UID 时，记录先放在这个临时账号下
+
+
+TOKEN_STEPS = (
+    "① 用浏览器打开 https://user.hypergryph.com/ ，登录你的鹰角账号；\n"
+    "② 登录后，在同一个浏览器里打开 https://web-api.hypergryph.com/account/info/hg ；\n"
+    "③ 页面上会显示一段文字，整段复制，粘贴到「高级」里的输入框，再点「更新记录」。\n"
+    "令牌相当于账号的钥匙：软件只在内存里用一次，不会保存，也只发给鹰角官方，"
+    "但请不要把它发给别人，也不要贴到别的地方。"
+)
+TOKEN_HELP = (
+    "软件会先试着从游戏日志里读凭证；官方可能已经调整了日志的写法，读不到或官方不认的话，请改用账号令牌"
+    "（和明日方舟用的是同一个）：\n" + TOKEN_STEPS + "\n也可以在这里粘贴一条寻访记录页面的链接。"
+)
 
 
 # ---------- 找日志、取链接 ----------
@@ -102,6 +119,7 @@ class EndfieldAuth:
     uid: str
     nickname: str
     uid_known: bool = True             # False：官方没回 UID，记录暂存在临时账号 UNKNOWN_UID 下
+    note: str = ""                     # 要提醒用户的话（例如这个账号下有多个角色），会放进更新结果的提示里
 
 
 def parse_link_all(url: str) -> tuple:
@@ -155,9 +173,18 @@ def _detail(data, token: str = "") -> str:
 
 def _expired_text(*reasons: str) -> str:
     return (
-        f"官方没有接受日志里的凭证（{'；'.join(reasons)}）。\n"
-        "请在游戏里重新打开一次「寻访」→「寻访记录」，过几秒再点更新；"
+        f"官方没有接受这个凭证（{'；'.join(reasons)}）。\n"
+        "用日志的话，请在游戏里重新打开一次「寻访」→「寻访记录」，过几秒再点更新；用账号令牌的话，请重新复制一遍。"
         "如果已经这样做过还是不行，请点「高级」→「环境检测」，把结果发给开发者。"
+    )
+
+
+def _log_not_accepted(error: AuthExpired) -> AuthExpired:
+    """日志里的凭证官方不认：告诉用户改用账号令牌（第一行自成一句，“更新全部”只显示第一行）。"""
+    reasons = "；".join(getattr(error, "reasons", None) or [str(error).splitlines()[0]])
+    return AuthExpired(
+        f"官方没有接受日志里的凭证（{reasons}）；官方可能调整过日志，这个办法多半走不通了，请改用账号令牌。\n"
+        "做法：把账号令牌粘贴到下面「高级」的输入框里，步骤见输入框下面的说明。"
     )
 
 
@@ -169,14 +196,26 @@ def _rejected(step: str, data, token: str = "") -> AuthExpired:
     reason = f"{step} {_detail(data, token)}"
     error = AuthExpired(_expired_text(reason))
     error.reason = reason          # 几次尝试都被拒绝时，把每次的原因合在一条提示里
+    error.reasons = [reason]
     return error
 
 
-class EndfieldClient:
+class EndfieldClient(HgAccount):
     def __init__(self, transport=None, sleep=time.sleep):
-        self._transport = transport or default_transport()
-        self._sleep = sleep
+        super().__init__(transport, sleep)
         self._calls = 0
+
+    def account_auth(self, account_token: str) -> EndfieldAuth:
+        """账号令牌 → 授权令牌 → 绑定的终末地角色 → 角色令牌（取记录用的 u8_token）。国服的服务器编号固定是 1。"""
+        oauth = self.grant(account_token)
+        found = self.bindings(oauth, "endfield")
+        if not found:
+            raise ApiError("这个鹰角账号下没有绑定终末地角色。请确认登录的是玩终末地的那个鹰角账号。")
+        first = found[0]
+        roles = first.get("roles") or [{}]
+        nickname = (first["nickname"] or str(roles[0].get("nickName") or "")).strip()
+        note = f"这个鹰角账号下有 {len(found)} 个终末地角色，这次只更新了第一个（UID {first['uid']}）。" if len(found) > 1 else ""
+        return EndfieldAuth(self.u8_token(oauth, first["uid"]), "1", first["uid"], nickname, note=note)
 
     def _pace(self) -> None:
         if self._calls:
@@ -280,19 +319,28 @@ class EndfieldGame(Game):
         return EndfieldClient()
 
     def connect(self, client, url: str, game_dir: str) -> EndfieldAuth:
-        if url.strip():
-            links = [url.strip()]
-        else:
-            log = find_log(game_dir or None)
-            try:
-                blob = read_file_shared(log)
-            except OSError as e:
-                raise LocateError(explain_read_failure(log, e, "游戏日志文件")) from e
-            links = find_links(blob.decode("utf-8", errors="replace"))
-            if not links:
-                raise LocateError(
-                    "日志里没有找到寻访记录链接。请先在游戏里打开一次「寻访」→「寻访记录」，再回来更新。"
-                )
+        text = url.strip()
+        if text and "ef-webview" not in text and not text.lower().startswith("http"):
+            return client.account_auth(parse_account_token(text))     # 粘贴的是账号令牌
+        if text:
+            return self._from_links(client, [text])                   # 粘贴的是寻访记录链接
+        log = find_log(game_dir or None)
+        try:
+            blob = read_file_shared(log)
+        except OSError as e:
+            raise LocateError(explain_read_failure(log, e, "游戏日志文件")) from e
+        links = find_links(blob.decode("utf-8", errors="replace"))
+        if not links:
+            raise LocateError(
+                "日志里没有找到寻访记录链接。请先在游戏里打开一次「寻访」→「寻访记录」，再回来更新；"
+                "如果打开过还是找不到，官方可能调整了日志的写法，请改用账号令牌（做法见下面「高级」里的说明）。"
+            )
+        try:
+            return self._from_links(client, links)
+        except AuthExpired as e:
+            raise _log_not_accepted(e) from e
+
+    def _from_links(self, client, links: list) -> EndfieldAuth:
         # 最新的链接排最前；每条链接里的 token 可能有几种写法，都排进候选里，一个个试到被官方接受为止
         candidates = []
         for link in links:
@@ -317,7 +365,9 @@ class EndfieldGame(Game):
             client.char_page(auth, "E_CharacterGachaPoolType_Standard", None)
         except (AuthExpired, ApiError) as e:
             reasons.append(getattr(e, "reason", None) or f"取记录 {_one_line(e)}")
-            raise AuthExpired(_expired_text(*reasons)) from e
+            error = AuthExpired(_expired_text(*reasons))
+            error.reasons = reasons
+            raise error from e
         return auth
 
     def _feed(self, fetch_page, make_record, known: set) -> list:
@@ -345,6 +395,8 @@ class EndfieldGame(Game):
         new: dict = {}
         warnings: list = []
         total_fresh = 0
+        if auth.note:
+            warnings.append(auth.note)
         if not auth.uid_known:
             warnings.append(
                 "官方没有告诉软件这个账号的 UID，记录先放在「账号 0」下。"
@@ -401,13 +453,15 @@ class EndfieldGame(Game):
         return {"uid": auth.uid, "new": new, "total_new": sum(new.values()), "warnings": warnings}
 
     def diagnose(self, game_dir: str) -> list:
+        by_token = "账号令牌方式：不读本机文件，在「高级」里粘贴账号令牌即可（这里只检查本机，不联网）"
         try:
             log = find_log(game_dir or None)
         except LocateError as e:
-            return [f"游戏日志：没找到（{str(e).splitlines()[0]}）"]
+            return [f"游戏日志：没找到（{str(e).splitlines()[0]}）", by_token]
         info = log.stat()
         when = datetime.fromtimestamp(info.st_mtime).strftime("%Y-%m-%d %H:%M")
         lines = [f"游戏日志：{mask_path(log)}（{info.st_size / 1024:.0f} KB，最后写入 {when}）"]
+        lines.append(by_token)
         try:
             blob = read_file_shared(log)
         except OSError as e:
@@ -443,6 +497,7 @@ ENDFIELD = EndfieldGame(
         Pool("weapon_rerun", "重构申领", 40, None, optional=True, reset_on_new_pool=True),
     ),
     ranks=SIX_STARS, currency="", cost_per_pull=None,
-    hint="进入「寻访」页面，打开「寻访记录」，随便点开一个卡池翻一翻。",
+    hint="进入「寻访」页面，打开「寻访记录」，随便点开一个卡池翻一翻。读不到、官方不认日志里的凭证时，改用「高级」里的账号令牌。",
     retention="最近 90 天", trust_record_type=False,
+    manual_label="账号令牌或记录链接（日志读不到时用）", manual_help=TOKEN_HELP, manual_secret=True,
 )

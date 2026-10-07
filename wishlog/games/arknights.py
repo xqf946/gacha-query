@@ -7,29 +7,24 @@
 
 接口链条（账号令牌 → 授权令牌 → 绑定角色 → 角色令牌 → 登录角色 → 按卡池类别翻页取记录）
 参考了开源工具 AceDroidX/arknights-gacha-export 的 API.md 和 Gordenghost/arklog，
-这里是用 Python 按本项目的结构重新实现的。
+这里是用 Python 按本项目的结构重新实现的。账号这一侧（前四步）和终末地共用，见 hg_account.py。
 """
 
 from __future__ import annotations
 
-import json
-import re
 import time
 import zlib
 from urllib.parse import urlencode
 
-from ..client import ApiError, AuthExpired, InvalidUrl
+from ..client import ApiError, AuthExpired
 from ..locate import NeedsInput
-from ..net import default_transport, format_ts
+from ..net import format_ts
+from . import hg_account
 from .base import ARKNIGHTS_RANKS, Game, Pool
+from .hg_account import HgAccount
 
-AS_HOST = "https://as.hypergryph.com"
-BINDING_HOST = "https://binding-api-account-prod.hypergryph.com"
 AK_HOST = "https://ak.hypergryph.com"
-APP_CODE = "be36d44aa36bfb5b"            # 明日方舟用户中心；森空岛的授权码换不到寻访记录
 PAGE_SIZE = 50
-_TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=_.\-%]{16,}$")
-_JSON_TOKEN_RE = re.compile(r'"(?:content|token)"\s*:\s*"([^"]+)"')
 
 TOKEN_HELP = (
     "原版明日方舟没有本地文件可以读，需要一个账号令牌：\n"
@@ -44,82 +39,16 @@ TOKEN_HELP = (
 
 def parse_account_token(text: str) -> str:
     """接受官网页面上的整段内容（JSON），或者单独的令牌。"""
-    raw = text.strip()
-    if not raw:
+    if not text.strip():
         raise NeedsInput("原版明日方舟需要先粘贴账号令牌才能更新。\n" + TOKEN_HELP)
-    token = None
-    if raw[:1] in "{[":
-        try:
-            token = _find_token(json.loads(raw))
-        except ValueError:
-            pass
-        if token is None:
-            m = _JSON_TOKEN_RE.search(raw)    # 复制得不完整、不是合法 JSON 时，退一步用正则找
-            token = m.group(1) if m else None
-    else:
-        token = raw.strip("\"' \r\n")
-    if not token or not _TOKEN_RE.match(token):
-        raise InvalidUrl("没能从你粘贴的内容里认出账号令牌。请照说明重新复制官网页面上显示的整段文字。")
-    return token
+    return hg_account.parse_account_token(text)
 
 
-def _find_token(node):
-    if isinstance(node, dict):
-        for key in ("content", "token"):
-            if isinstance(node.get(key), str) and node[key]:
-                return node[key]
-        for value in node.values():
-            found = _find_token(value)
-            if found:
-                return found
-    return None
-
-
-class ArknightsClient:
+class ArknightsClient(HgAccount):
     def __init__(self, transport=None, sleep=time.sleep):
-        self._transport = transport or default_transport()
-        self._sleep = sleep
-        self._account_token = ""       # 只在内存里，仅用于个别接口要求时作为备用请求头
+        super().__init__(transport, sleep)
         self._send_account_token = False   # 服务器拒绝过一次、要求带上它之后，后面的请求就直接带，不再每次先被拒一遍
         self._pages = 0
-
-    # ---- 账号这一侧：返回 {"status": 0, "data": ...} ----
-    def _as(self, method: str, url: str, body=None) -> dict:
-        data = self._transport(method, url, {}, body)
-        if not isinstance(data, dict) or data.get("status") != 0:
-            message = data.get("msg") if isinstance(data, dict) else ""
-            raise AuthExpired(f"账号令牌无效或已经过期（{message or '无详细信息'}）。请重新登录官网，再复制一遍页面上的内容。")
-        return data.get("data") or {}
-
-    def grant(self, account_token: str) -> str:
-        self._account_token = account_token
-        data = self._as("POST", f"{AS_HOST}/user/oauth2/v2/grant",
-                        {"token": account_token, "appCode": APP_CODE, "type": 1})
-        token = data.get("token")
-        if not token:
-            raise ApiError("账号授权没有返回令牌，接口可能已经改版。")
-        return token
-
-    def bindings(self, oauth: str) -> list:
-        data = self._as("GET", f"{BINDING_HOST}/account/binding/v1/binding_list?"
-                        + urlencode({"token": oauth, "appCode": "arknights"}))
-        found = []
-        for app in data.get("list") or []:
-            if app.get("appCode") != "arknights":
-                continue
-            for b in app.get("bindingList") or []:
-                uid = str(b.get("uid") or "").strip()
-                if uid.isdigit():
-                    found.append({"uid": uid, "channel": str(b.get("channelName") or ""),
-                                  "nickname": str(b.get("nickName") or "")})
-        return found
-
-    def u8_token(self, oauth: str, uid: str) -> str:
-        token = self._as("POST", f"{BINDING_HOST}/account/binding/v1/u8_token_by_uid",
-                         {"token": oauth, "uid": uid}).get("token")
-        if not token:
-            raise ApiError("没能换到角色令牌，接口可能已经改版。")
-        return token
 
     # ---- 寻访记录这一侧（ak.hypergryph.com） ----
     def _ak(self, method: str, path: str, u8: str, body=None):
