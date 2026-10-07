@@ -2,6 +2,9 @@
 
 纯 Python（只用标准库）绘制：靛蓝到紫色的渐变圆角方块，中间一颗金色四芒星。
 改了样式后运行一次：python tools/make_icon.py
+
+注意：这会覆盖 assets 里现在的图标。当前使用的图标是用图片生成的（见 tools/make_icon_from_image.py），
+想换回这个纯代码画的星形图标时才运行它。
 """
 
 from __future__ import annotations

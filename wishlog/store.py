@@ -69,6 +69,30 @@ class Store:
             self._write(self._path(uid), doc)
             return added
 
+    def absorb(self, source_uid: str, target_uid: str) -> int:
+        """把临时账号 source_uid 里的记录并进 target_uid（已经有的按 id 去重），成功后把临时文件改名留作备份。
+        返回临时账号里的记录条数。"""
+        if source_uid == target_uid:
+            return 0
+        with self._lock:
+            source = self.load(source_uid)
+            if not source["records"]:
+                return 0
+            source_path = self._path(source_uid)
+            target = self.load(target_uid)
+            by_id = {r["id"]: r for r in target["records"]}
+            for r in source["records"]:
+                by_id.setdefault(r["id"], r)
+            target["uid"] = target_uid
+            target["updated_at"] = target["updated_at"] or source["updated_at"]
+            meta = {**(source.get("meta") or {}), **(target.get("meta") or {})}
+            if meta:
+                target["meta"] = meta
+            target["records"] = sorted(by_id.values(), key=lambda r: int(r["id"]))
+            self._write(self._path(target_uid), target)
+            os.replace(source_path, source_path.with_suffix(".json.merged"))  # 合并成功后才动旧文件
+            return len(source["records"])
+
     def _write(self, path: Path, doc: dict) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")

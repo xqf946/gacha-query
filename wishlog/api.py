@@ -58,7 +58,12 @@ class Api:
         return {
             "games": [{**self._games[k].meta(), "uids": self._store(k).uids()} for k in self._order],
             "sync": self._job.status(),
+            "theme": self._settings.theme(),
         }
+
+    def set_theme(self, theme) -> str:
+        """记住用户选的外观（auto/light/dark），返回实际保存的值。"""
+        return self._settings.set_theme(str(theme))
 
     def get_wishes(self, game, uid) -> dict:
         found = self._known(game, uid)
@@ -114,7 +119,7 @@ class Api:
     # ---- 诊断 ----
     def diagnose(self) -> dict:
         """检查本机上每个游戏的安装、缓存/日志、链接情况。只看本机，不联网，报告里没有任何密钥。"""
-        lines = [f"原神抽卡记录 v{__version__} 环境检测", f"系统：{platform.platform()}", ""]
+        lines = [f"抽卡查询 v{__version__} 环境检测", f"系统：{platform.platform()}", ""]
         for key in self._order:
             game = self._games[key]
             lines.append(f"【{game.name}】")

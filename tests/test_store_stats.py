@@ -81,6 +81,29 @@ class StoreExtras(unittest.TestCase):
         self.assertEqual(self.store.meta("999"), {})
 
 
+class Absorb(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(Path(self.tmp.name))
+
+    def test_records_are_merged_without_duplicates_and_the_old_file_is_kept_aside(self):
+        self.store.merge("0", [rec(1, "special", 5), rec(2, "special", 4)], meta={"a": 1})
+        self.store.merge("555", [rec(2, "special", 4), rec(3, "special", 6)])
+        self.assertEqual(self.store.absorb("0", "555"), 2)
+        self.assertEqual([r["id"] for r in self.store.load("555")["records"]], ["1001", "1002", "1003"])
+        self.assertEqual(self.store.meta("555"), {"a": 1})
+        self.assertEqual(self.store.uids(), ["555"])
+        self.assertTrue((Path(self.tmp.name) / "0.json.merged").is_file())
+
+    def test_nothing_to_merge_changes_nothing(self):
+        self.store.merge("555", [rec(1, "special", 5)])
+        self.assertEqual(self.store.absorb("0", "555"), 0)       # 没有临时账号
+        self.assertEqual(self.store.absorb("555", "555"), 0)     # 自己并自己
+        self.assertEqual(self.store.uids(), ["555"])
+        self.assertEqual(len(self.store.load("555")["records"]), 1)
+
+
 class MigrateLegacy(unittest.TestCase):
     """v0.2.x 的记录直接放在 data 下；多游戏之后要搬进 genshin 子文件夹。这是唯一会动到用户现有数据的改动。"""
 

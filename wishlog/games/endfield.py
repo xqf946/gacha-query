@@ -16,7 +16,7 @@ import zlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import parse_qsl, unquote, unquote_plus, urlencode, urlparse
 
 from ..client import ApiError, AuthExpired, InvalidUrl
 from ..locate import (
@@ -32,6 +32,8 @@ LINK_HOST = "ef-webview.hypergryph.com"
 LOG_PARTS = ("AppData", "LocalLow", "Hypergryph", "Endfield", "sdklogs", "HGWebview.log")
 _LINK_RE = re.compile(r"""https://ef-webview\.hypergryph\.com/page/gacha_[^\s"'<>]*""")
 _FEED_CHAR, _FEED_WEAPON = 1, 2
+MAX_TRIES = 6              # 日志里有好几条链接、token 又有几种写法时，最多试几次
+UNKNOWN_UID = "0"          # 官方没告诉我们 UID 时，记录先放在这个临时账号下
 
 
 # ---------- 找日志、取链接 ----------
@@ -63,13 +65,34 @@ def find_log(explicit=None, home: Path | None = None) -> Path:
     return log
 
 
-def find_link(text: str) -> str | None:
-    """日志里最新的一条寻访记录页链接（从后往前找第一条）。"""
+_TOKEN_RE = re.compile(r"[?&]u8_token=([^&#\s\"'<>\\]+)")
+
+
+def _clean_link(url: str) -> str:
+    """日志里的链接有时是 JSON 转义过的（& 写成 \\u0026）或后面粘着标点，先还原干净。"""
+    url = url.replace("\\u0026", "&").replace("&amp;", "&")
+    return url.rstrip("\\,;)]}")
+
+
+def find_links(text: str, limit: int = 8) -> list:
+    """日志里所有寻访记录页链接，最新的在前；同一个 token 只留一条。"""
+    seen, found = set(), []
     for line in reversed(text.splitlines()):
-        m = _LINK_RE.search(line)
-        if m:
-            return m.group(0)
-    return None
+        for m in reversed(list(_LINK_RE.finditer(line))):
+            url = _clean_link(m.group(0))
+            t = _TOKEN_RE.search(url)
+            if t and t.group(1) not in seen:
+                seen.add(t.group(1))
+                found.append(url)
+                if len(found) >= limit:
+                    return found
+    return found
+
+
+def find_link(text: str) -> str | None:
+    """日志里最新的一条寻访记录页链接。"""
+    links = find_links(text, limit=1)
+    return links[0] if links else None
 
 
 @dataclass(frozen=True)
@@ -78,25 +101,75 @@ class EndfieldAuth:
     server_id: str
     uid: str
     nickname: str
+    uid_known: bool = True             # False：官方没回 UID，记录暂存在临时账号 UNKNOWN_UID 下
+
+
+def parse_link_all(url: str) -> tuple:
+    """从链接里取出 ([可能的 token 写法], server_id)。
+
+    链接里的 token 可能含 + 号：按网页规则 + 会被当成空格，但 token 里不会有空格，
+    所以两种还原方式都准备好，先试保留 + 的那种。域名必须是鹰角的终末地页面，token 只会发给固定的官方地址。
+    """
+    u = urlparse(_clean_link(url.strip().strip('"')))
+    if u.scheme != "https" or u.hostname != LINK_HOST or not u.path.startswith("/page/gacha_"):
+        raise InvalidUrl(f"这不是终末地的寻访记录链接（应该来自 {LINK_HOST}）。")
+    found = _TOKEN_RE.search("?" + u.query)
+    if not found:
+        raise InvalidUrl("链接里没有 u8_token。请重新在游戏里打开一次「寻访记录」。")
+    raw = found.group(1)
+    variants = []
+    for candidate in (unquote(raw), unquote_plus(raw), raw):
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    params = dict(parse_qsl(u.query))
+    server = (params.get("server_id") or params.get("server") or "1").strip()
+    return variants, (server if server.isdigit() else "1")
 
 
 def parse_link(url: str) -> tuple:
-    """从链接里取出 (u8_token, server_id)。域名必须是鹰角的终末地页面，token 只会发给固定的官方地址。"""
-    u = urlparse(url.strip().strip('"'))
-    if u.scheme != "https" or u.hostname != LINK_HOST or not u.path.startswith("/page/gacha_"):
-        raise InvalidUrl(f"这不是终末地的寻访记录链接（应该来自 {LINK_HOST}）。")
-    params = dict(parse_qsl(u.query))
-    token = params.get("u8_token", "").strip()
-    if not token:
-        raise InvalidUrl("链接里没有 u8_token。请重新在游戏里打开一次「寻访记录」。")
-    server = (params.get("server_id") or params.get("server") or "1").strip()
-    return token, (server if server.isdigit() else "1")
+    """从链接里取出 (u8_token, server_id)。"""
+    variants, server = parse_link_all(url)
+    return variants[0], server
 
 
 # ---------- 官方接口 ----------
 def _looks_like_auth_problem(message: str) -> bool:
+    """只有说到“令牌/登录/过期”的才算凭证问题。单独一个 invalid 不算：
+    “invalid pool_type”这类是在说别的参数，把它当成凭证失效会把真正的原因藏起来。"""
     text = message.lower()
-    return any(w in text for w in ("token", "登录", "login", "expire", "invalid", "失效", "过期", "unauthorized"))
+    return any(w in text for w in ("token", "登录", "login", "expire", "失效", "过期", "unauthorized"))
+
+
+def _detail(data, token: str = "") -> str:
+    """把官方的回复整理成一句能看懂的话，用在报错里。令牌如果被原样回显，替换掉。"""
+    if isinstance(data, dict):
+        code = data.get("status", data.get("code"))
+        text = f"code={code}, msg={data.get('msg') or data.get('message') or ''}"
+    else:
+        text = f"返回的不是预期的内容：{str(data)[:80]}"
+    for secret in {token, unquote_plus(token) if token else ""}:
+        if secret:
+            text = text.replace(secret, "***")
+    return text[:160]
+
+
+def _expired_text(*reasons: str) -> str:
+    return (
+        f"官方没有接受日志里的凭证（{'；'.join(reasons)}）。\n"
+        "请在游戏里重新打开一次「寻访」→「寻访记录」，过几秒再点更新；"
+        "如果已经这样做过还是不行，请点「高级」→「环境检测」，把结果发给开发者。"
+    )
+
+
+def _one_line(error) -> str:
+    return str(error).strip().splitlines()[0][:160] if str(error).strip() else type(error).__name__
+
+
+def _rejected(step: str, data, token: str = "") -> AuthExpired:
+    reason = f"{step} {_detail(data, token)}"
+    error = AuthExpired(_expired_text(reason))
+    error.reason = reason          # 几次尝试都被拒绝时，把每次的原因合在一条提示里
+    return error
 
 
 class EndfieldClient:
@@ -110,17 +183,13 @@ class EndfieldClient:
             self._sleep(0.2)     # 翻页之间歇一下，免得被风控
         self._calls += 1
 
-    def _expired(self) -> AuthExpired:
-        return AuthExpired(
-            "寻访记录的凭证已经失效。请在游戏里重新打开一次「寻访」→「寻访记录」，再回来更新。"
-        )
-
     def role(self, token: str, server_id: str) -> tuple:
         """用 token 换出账号的 UID 和角色名。同时也验证了 token 有没有失效。"""
         data = self._transport("POST", f"{U8_HOST}/game/role/v1/query_role_list", {},
                                {"token": token, "serverId": server_id})
-        if not isinstance(data, dict) or data.get("status") != 0:
-            raise self._expired()
+        ok = isinstance(data, dict) and (data.get("status") == 0 or (data.get("status") is None and data.get("code") == 0))
+        if not ok:
+            raise _rejected("查询账号 query_role_list", data, token)
         info = data.get("data") or {}
         roles = info.get("roles") or []
         role = next((r for r in roles if str(r.get("serverId", "")) == str(server_id)), roles[0] if roles else {})
@@ -138,12 +207,12 @@ class EndfieldClient:
             {"u8_token": auth.token, "server": auth.server_id, "lang": "zh-cn"})
         data = self._transport("GET", f"{WEB_HOST}{path}?{urlencode(query)}", {"Referer": referer}, None)
         if not isinstance(data, dict):
-            raise ApiError("官方接口返回的内容不对。")
+            raise ApiError(f"官方接口返回的内容不对（{_detail(data, auth.token)}）。")
         if data.get("code") != 0:
             message = str(data.get("msg") or data.get("message") or "")
             if _looks_like_auth_problem(message):
-                raise self._expired()
-            raise ApiError(f"官方接口返回错误：{message}（code {data.get('code')}）")
+                raise _rejected(f"取记录 {path}", data, auth.token)
+            raise ApiError(f"官方接口返回错误：{_detail(data, auth.token)}（{path}）")
         return data.get("data")
 
     def char_page(self, auth: EndfieldAuth, pool_type: str, seq_id: str | None) -> tuple:
@@ -212,21 +281,44 @@ class EndfieldGame(Game):
 
     def connect(self, client, url: str, game_dir: str) -> EndfieldAuth:
         if url.strip():
-            link = url.strip()
+            links = [url.strip()]
         else:
             log = find_log(game_dir or None)
             try:
                 blob = read_file_shared(log)
             except OSError as e:
                 raise LocateError(explain_read_failure(log, e, "游戏日志文件")) from e
-            link = find_link(blob.decode("utf-8", errors="replace"))
-            if not link:
+            links = find_links(blob.decode("utf-8", errors="replace"))
+            if not links:
                 raise LocateError(
                     "日志里没有找到寻访记录链接。请先在游戏里打开一次「寻访」→「寻访记录」，再回来更新。"
                 )
-        token, server_id = parse_link(link)
-        uid, nickname = client.role(token, server_id)
-        return EndfieldAuth(token, server_id, uid, nickname)
+        # 最新的链接排最前；每条链接里的 token 可能有几种写法，都排进候选里，一个个试到被官方接受为止
+        candidates = []
+        for link in links:
+            variants, server_id = parse_link_all(link)
+            candidates.extend((token, server_id) for token in variants)
+        rejected = []
+        for token, server_id in candidates[:MAX_TRIES]:
+            try:
+                uid, nickname = client.role(token, server_id)
+            except AuthExpired as e:
+                rejected.append(e)
+                continue
+            return EndfieldAuth(token, server_id, uid, nickname)
+        return self._without_role(client, candidates[0], rejected)
+
+    def _without_role(self, client, candidate, rejected: list) -> EndfieldAuth:
+        """查账号被拒绝时，再直接问一次记录接口：它认这个令牌的话，就能取到记录，只是不知道 UID。"""
+        token, server_id = candidate
+        auth = EndfieldAuth(token, server_id, UNKNOWN_UID, "", uid_known=False)
+        reasons = [getattr(e, "reason", str(e)) for e in rejected[:2]]
+        try:
+            client.char_page(auth, "E_CharacterGachaPoolType_Standard", None)
+        except (AuthExpired, ApiError) as e:
+            reasons.append(getattr(e, "reason", None) or f"取记录 {_one_line(e)}")
+            raise AuthExpired(_expired_text(*reasons)) from e
+        return auth
 
     def _feed(self, fetch_page, make_record, known: set) -> list:
         """翻完一个来源（一种角色池，或一个武器池）。遇到本地已有的记录就停。返回新记录，从新到旧。"""
@@ -253,6 +345,11 @@ class EndfieldGame(Game):
         new: dict = {}
         warnings: list = []
         total_fresh = 0
+        if not auth.uid_known:
+            warnings.append(
+                "官方没有告诉软件这个账号的 UID，记录先放在「账号 0」下。"
+                "等能取到 UID 时，软件会自动把它们并进真正的账号。"
+            )
 
         def report(name: str, count: int) -> None:
             if progress:
@@ -297,6 +394,10 @@ class EndfieldGame(Game):
 
         if not known and not total_fresh:
             raise ApiError("这个账号在所有卡池里都没有寻访记录。")
+        if auth.uid_known and UNKNOWN_UID in store.uids():
+            moved = store.absorb(UNKNOWN_UID, auth.uid)
+            if moved:
+                warnings.append(f"之前暂存在「账号 0」下的 {moved} 条记录，已并入这个账号。")
         return {"uid": auth.uid, "new": new, "total_new": sum(new.values()), "warnings": warnings}
 
     def diagnose(self, game_dir: str) -> list:
@@ -311,11 +412,20 @@ class EndfieldGame(Game):
             blob = read_file_shared(log)
         except OSError as e:
             return lines + [f"读取日志：失败（{explain_read_failure(log, e, '日志').splitlines()[0]}）"]
-        link = find_link(blob.decode("utf-8", errors="replace"))
-        if not link:
+        links = find_links(blob.decode("utf-8", errors="replace"))
+        if not links:
             return lines + ["寻访记录链接：没找到（请先在游戏里打开一次「寻访」→「寻访记录」）"]
-        has_token = "u8_token=" in link
-        return lines + [f"寻访记录链接：找到；{describe_url(link)}；{'含' if has_token else '不含'} u8_token"]
+        lines.append(f"寻访记录链接：找到 {len(links)} 条不同的；最新一条 {describe_url(links[0])}")
+        try:
+            variants, server_id = parse_link_all(links[0])
+        except InvalidUrl as e:
+            return lines + [f"最新一条链接：解析失败（{e}）"]
+        raw = _TOKEN_RE.search(_clean_link(links[0])).group(1)
+        lines.append(
+            f"最新一条的令牌：长 {len(raw)}；含 +号 {'是' if '+' in raw else '否'}、"
+            f"%转义 {'是' if '%' in raw else '否'}、=号 {'是' if '=' in raw else '否'}；写法 {len(variants)} 种；服务器 {server_id}"
+        )   # 只报形状，不报内容
+        return lines
 
 
 ENDFIELD = EndfieldGame(

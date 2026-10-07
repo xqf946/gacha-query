@@ -57,6 +57,29 @@ class Links(unittest.TestCase):
     def test_no_link(self):
         self.assertIsNone(endfield.find_link("nothing here\nat all"))
 
+    def test_find_links_lists_every_distinct_token_newest_first(self):
+        old, mid, new = (EF_LINK.replace(EF_TOKEN, t) for t in ("OLD", "MID", "NEW"))
+        text = log_text(old, mid, mid, new)               # mid 出现了两次，只算一条
+        self.assertEqual(endfield.find_links(text), [new, mid, old])
+        self.assertEqual(endfield.find_links(text, limit=2), [new, mid])
+
+    def test_two_links_on_one_line_newest_is_the_one_on_the_right(self):
+        old, new = EF_LINK.replace(EF_TOKEN, "OLD"), EF_LINK.replace(EF_TOKEN, "NEW")
+        self.assertEqual(endfield.find_links(f"a {old} b {new} c"), [new, old])
+
+    def test_json_escaped_ampersands_and_trailing_punctuation_are_cleaned(self):
+        escaped = EF_LINK.replace("&", "\\u0026")
+        self.assertEqual(endfield.parse_link(endfield.find_link(f'x={escaped}",\\')), (EF_TOKEN, "1"))
+        self.assertEqual(endfield.parse_link(endfield.find_link(EF_LINK.replace("&", "&amp;") + ")")), (EF_TOKEN, "1"))
+
+    def test_a_token_with_a_plus_sign_is_tried_both_ways(self):
+        variants, _ = endfield.parse_link_all(EF_LINK.replace(EF_TOKEN, "ab+cd%2Fef=="))
+        self.assertEqual(variants, ["ab+cd/ef==", "ab cd/ef==", "ab+cd%2Fef=="])
+        self.assertEqual(endfield.parse_link(EF_LINK.replace(EF_TOKEN, "ab+cd"))[0], "ab+cd")   # 默认保留 +
+
+    def test_a_plain_token_has_a_single_spelling(self):
+        self.assertEqual(endfield.parse_link_all(EF_LINK)[0], [EF_TOKEN])
+
 
 class FindingTheLog(unittest.TestCase):
     def setUp(self):
@@ -123,6 +146,12 @@ class Client(unittest.TestCase):
         self.assertEqual((method, host, path), ("POST", "u8.hypergryph.com", "/game/role/v1/query_role_list"))
         self.assertEqual(body, {"token": EF_TOKEN, "serverId": "1"})
 
+    def test_a_reply_that_says_code_zero_instead_of_status_is_accepted(self):
+        def reply(method, url, headers, body):
+            return {"code": 0, "data": {"uid": "42", "roles": []}}
+        client = endfield.EndfieldClient(transport=reply, sleep=lambda s: None)
+        self.assertEqual(client.role(EF_TOKEN, "1"), ("42", ""))
+
     def test_uid_falls_back_to_the_role_id(self):
         fake = FakeEndfield(uid="not-a-number")
         self.assertEqual(self.client(fake).role(EF_TOKEN, "1")[0], "555")
@@ -130,6 +159,34 @@ class Client(unittest.TestCase):
     def test_an_invalid_token_is_reported_as_expired(self):
         with self.assertRaisesRegex(AuthExpired, "寻访记录"):
             self.client(FakeEndfield(token="OTHER")).role(EF_TOKEN, "1")
+
+    def test_the_error_says_which_step_failed_and_what_the_server_replied(self):
+        with self.assertRaises(AuthExpired) as ctx:
+            self.client(FakeEndfield(token="OTHER")).role(EF_TOKEN, "1")
+        text = str(ctx.exception)
+        self.assertIn("query_role_list", text)
+        self.assertIn("status=3", text.replace("code=", "status="))
+        self.assertIn("token invalid", text)
+        self.assertIn("环境检测", text)
+        self.assertNotIn(EF_TOKEN, text)
+
+    def test_an_echoed_token_never_reaches_the_message(self):
+        def echo(method, url, headers, body):
+            return {"status": 3, "msg": f"bad token {EF_TOKEN} for you"}
+        with self.assertRaises(AuthExpired) as ctx:
+            endfield.EndfieldClient(transport=echo, sleep=lambda s: None).role(EF_TOKEN, "1")
+        self.assertNotIn(EF_TOKEN, str(ctx.exception))
+        self.assertIn("***", str(ctx.exception))
+
+    def test_an_unrelated_server_complaint_is_not_called_an_expired_credential(self):
+        def other(method, url, headers, body):
+            return {"code": 7, "msg": "invalid pool_type", "data": None}
+        client = endfield.EndfieldClient(transport=other, sleep=lambda s: None)
+        auth = endfield.EndfieldAuth(EF_TOKEN, "1", "1", "")
+        with self.assertRaises(ApiError) as ctx:
+            client.char_page(auth, "E_CharacterGachaPoolType_Special", None)
+        self.assertNotIsInstance(ctx.exception, AuthExpired)
+        self.assertIn("invalid pool_type", str(ctx.exception))
 
     def test_requests_carry_the_referer_and_stay_on_official_hosts(self):
         fake = FakeEndfield(chars={"special": [ef_char(1, "x", 4)]})
@@ -176,6 +233,75 @@ class WholeGame(unittest.TestCase):
             auth = ENDFIELD.connect(self.client, "", "")
         self.assertEqual((auth.token, auth.server_id, auth.uid, auth.nickname), (EF_TOKEN, "1", "987654321", "管理员"))
         self.assertNotIn(EF_TOKEN, repr(auth) + str(auth.uid))
+
+    def connect_from(self, text: str):
+        home = make_home(Path(self.tmp.name) / "h-custom", text)
+        with mock.patch.object(endfield, "home_dir", return_value=home):
+            return ENDFIELD.connect(self.client, "", "")
+
+    def test_a_stale_newest_link_falls_back_to_an_older_working_one(self):
+        stale = EF_LINK.replace(EF_TOKEN, "STALE")
+        auth = self.connect_from(log_text(EF_LINK, stale))      # 日志里 stale 更新，但官方不认
+        self.assertEqual((auth.token, auth.uid), (EF_TOKEN, "987654321"))
+        tried = [c[5]["token"] for c in self.fake.calls if c[1] == "u8.hypergryph.com"]
+        self.assertEqual(tried, ["STALE", EF_TOKEN])
+
+    def test_the_plus_sign_spelling_is_tried_first_and_the_space_one_as_a_second_chance(self):
+        self.fake.token = "ab cd"                          # 假设官方认的是 + 被还原成空格的写法
+        link = EF_LINK.replace(EF_TOKEN, "ab+cd")
+        auth = self.connect_from(log_text(link))
+        self.assertEqual((auth.token, auth.uid_known), ("ab cd", True))
+        tried = [c[5]["token"] for c in self.fake.calls if c[1] == "u8.hypergryph.com"]
+        self.assertEqual(tried, ["ab+cd", "ab cd"])
+
+    def test_it_stops_after_a_handful_of_attempts(self):
+        links = [EF_LINK.replace(EF_TOKEN, f"BAD{i}") for i in range(20)]
+        with self.assertRaises(AuthExpired):
+            self.connect_from(log_text(*links))
+        role_calls = [c for c in self.fake.calls if c[1] == "u8.hypergryph.com"]
+        self.assertEqual(len(role_calls), endfield.MAX_TRIES)
+
+    def test_a_network_problem_is_not_mistaken_for_an_expired_credential(self):
+        from wishlog.client import NetworkError
+
+        def down(method, url, headers, body):
+            raise NetworkError("连不上官方接口")
+        client = endfield.EndfieldClient(transport=down, sleep=lambda s: None)
+        with self.assertRaises(NetworkError):
+            ENDFIELD.connect(client, EF_LINK, "")
+
+    def test_when_only_the_account_lookup_refuses_the_records_still_come_through(self):
+        self.fake.role_status = 3
+        auth = self.connect_from(log_text(EF_LINK))
+        self.assertEqual((auth.uid, auth.uid_known), (endfield.UNKNOWN_UID, False))
+        result = ENDFIELD.sync(self.client, auth, self.store)
+        self.assertEqual(result["uid"], "0")
+        self.assertEqual(result["new"]["特许寻访"], 8)
+        self.assertTrue(any("UID" in w for w in result["warnings"]))
+        self.assertEqual(self.store.uids(), ["0"])
+
+    def test_records_saved_under_the_placeholder_account_move_to_the_real_one_later(self):
+        self.fake.role_status = 3
+        auth = self.connect_from(log_text(EF_LINK))
+        ENDFIELD.sync(self.client, auth, self.store)
+        before = len(self.store.load("0")["records"])
+        self.fake.role_status = 0                           # 官方恢复正常，这次拿到了真正的 UID
+        result = self.run_sync()
+        self.assertEqual(result["uid"], "987654321")
+        self.assertEqual(self.store.uids(), ["987654321"])
+        self.assertEqual(len(self.store.load("987654321")["records"]), before)
+        self.assertTrue(any("账号 0" in w and "并入" in w for w in result["warnings"]))
+        self.assertTrue((self.store.root / "0.json.merged").exists())    # 旧文件改名留底，没有删
+
+    def test_when_neither_endpoint_accepts_the_token_the_error_lists_both_replies(self):
+        self.fake.token = "SOMETHING-ELSE"
+        with self.assertRaises(AuthExpired) as ctx:
+            self.connect_from(log_text(EF_LINK))
+        text = str(ctx.exception)
+        self.assertIn("query_role_list", text)
+        self.assertIn("/api/record/char", text)
+        self.assertNotIn(EF_TOKEN, text)
+        self.assertEqual(self.store.uids(), [])
 
     def test_connect_with_a_pasted_link(self):
         auth = ENDFIELD.connect(self.client, EF_LINK, "/does/not/exist")
@@ -268,6 +394,17 @@ class WholeGame(unittest.TestCase):
         self.assertIn("HGWebview.log", text)
         self.assertIn("u8_token", text)           # 只说“含 u8_token”和参数名
         self.assertNotIn(EF_TOKEN, text)
+
+    def test_the_diagnosis_reports_the_shape_of_the_token_but_not_its_value(self):
+        link = EF_LINK.replace(EF_TOKEN, "Zk+9/Qx%2Bw==")
+        home = make_home(Path(self.tmp.name) / "h-shape", log_text(EF_LINK.replace(EF_TOKEN, "OLDER"), link))
+        with mock.patch.object(endfield, "home_dir", return_value=home):
+            text = "\n".join(ENDFIELD.diagnose(""))
+        self.assertIn("2 条", text)
+        self.assertIn("长 13", text)
+        self.assertIn("含 +号 是", text)
+        for secret in ("Zk+9", "OLDER", "Qx%2Bw", "Qx+w"):
+            self.assertNotIn(secret, text)
 
     def test_the_diagnosis_when_the_game_was_never_run(self):
         with mock.patch.object(endfield, "home_dir", return_value=Path(self.tmp.name) / "nothing"):

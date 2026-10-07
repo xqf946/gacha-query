@@ -190,6 +190,8 @@ class FakeEndfield:
         if parsed.hostname == "u8.hypergryph.com":
             if not body or body.get("token") != self.token:
                 return {"status": 3, "msg": "token invalid"}
+            if self.role_status != 0:       # 账号服务拒绝（记录接口那边可能仍然认这个令牌）
+                return {"status": self.role_status, "msg": "role service refused"}
             uid = self.uid if self.role_uid is None else self.role_uid
             return {"status": self.role_status, "msg": "OK", "data": {
                 "uid": uid, "roles": [{"serverId": "1", "roleId": "555", "nickname": "管理员", "serverName": "China"}]}}

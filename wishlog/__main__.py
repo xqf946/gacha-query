@@ -12,7 +12,7 @@ def main(argv=None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
 
-    parser = argparse.ArgumentParser(prog="wishlog", description="原神抽卡记录查询")
+    parser = argparse.ArgumentParser(prog="wishlog", description="抽卡查询")
     parser.add_argument("--data-dir", help="记录保存目录（默认放在系统的用户数据目录）")
     parser.add_argument("--demo", action="store_true", help="用演示数据预览界面（不碰真实记录）")
     parser.add_argument("--selftest-out", metavar="文件", help="自检：打开窗口、确认界面正常后写出结果并退出")

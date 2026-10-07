@@ -18,7 +18,7 @@ from .paths import default_data_dir
 from .settings import Settings
 from .store import migrate_legacy
 
-TITLE = "原神抽卡记录"
+TITLE = "抽卡查询"
 INDEX = Path(__file__).parent / "static" / "index.html"
 WEBVIEW2_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
 _WEBVIEW2_CLIENT_KEY = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -106,6 +106,49 @@ _PROBE = """(() => ({
 }))()"""
 
 
+def _interaction_checks(window) -> dict:
+    """在真实窗口里点几下，检查切换游戏时界面状态不会串到别的游戏上。"""
+
+    def run(code: str):
+        try:
+            return window.evaluate_js(code)
+        except Exception:
+            return None
+
+    def pause() -> None:
+        time.sleep(0.6)
+
+    checks = {}
+    # 上一次操作留下的提示条（“更新完成，新增 N 条记录”）不能带到别的游戏的页面上
+    run("setStatus('ok', '更新完成，新增 136 条记录。'); document.querySelectorAll('.game')[1].click(); 0")
+    pause()
+    checks["banner_cleared_when_switching_games"] = run("document.querySelector('#status').textContent === ''") is True
+    # 明日方舟必须手动粘贴令牌，切到它会自动展开「高级」；切到别的游戏要自动收起，别一直开着
+    run("document.querySelector('.game[data-key=arknights]').click(); 0")
+    pause()
+    opened = run("document.querySelector('details.adv').open") is True
+    token_is_hidden = run("document.querySelector('#manual-url').type") == "password"
+    run("document.querySelector('.game[data-key=genshin]').click(); 0")
+    pause()
+    closed = run("document.querySelector('details.adv').open") is False
+    plain_again = run("document.querySelector('#manual-url').type") == "text"
+    checks["advanced_panel_follows_the_game"] = bool(opened and closed)
+    checks["token_box_only_hides_text_for_arknights"] = bool(token_is_hidden and plain_again)
+    # 侧栏的「外观」按钮：跟随系统 → 浅色 → 深色 → 回到跟随系统，每一步页面真的换了配色
+    seen = []
+    for _ in range(3):
+        run("document.querySelector('#theme').click(); 0")
+        pause()
+        seen.append(run("[document.documentElement.getAttribute('data-theme'), getComputedStyle(document.body).backgroundColor]"))
+    dark_bg = seen[1][1] if seen[1] else None
+    checks["appearance_button_cycles_light_dark_auto"] = bool(
+        seen[0] and seen[1] and seen[2]
+        and [seen[0][0], seen[1][0], seen[2][0]] == ["light", "dark", None]
+        and seen[0][1] != dark_bg
+    )
+    return checks
+
+
 def _selftest(window, out_path: str) -> None:
     """自检：等界面通过后台接口把演示数据画出来，把结果写进文件，然后关掉窗口。
 
@@ -125,8 +168,10 @@ def _selftest(window, out_path: str) -> None:
             time.sleep(0.5)
         if data:
             result.update(data)
+        result["checks"] = _interaction_checks(window) if data and data.get("tabs") else {}
         result["ok"] = bool(
             data and data.get("bridge") and data.get("tabs") and len(data.get("games") or []) == len(GAMES)
+            and result["checks"] and all(result["checks"].values())
         )
     except Exception:
         result["error"] = traceback.format_exc()

@@ -129,8 +129,28 @@ class ApiTests(unittest.TestCase):
         public = {n for n in dir(self.api) if not n.startswith("_")}
         self.assertEqual(public, {
             "get_state", "get_wishes", "app_info", "start_sync", "sync_status",
-            "export_records", "pick_game_dir", "open_data_dir", "diagnose",
+            "export_records", "pick_game_dir", "open_data_dir", "diagnose", "set_theme",
         })
+
+    # ---- 外观 ----
+    def test_theme_defaults_to_following_the_system_and_is_remembered(self):
+        self.assertEqual(self.api.get_state()["theme"], "auto")
+        self.assertEqual(self.api.set_theme("dark"), "dark")
+        self.assertEqual(self.api.get_state()["theme"], "dark")
+        self.assertEqual(Settings(self.data / "settings.json").theme(), "dark")     # 重开软件后还在
+        self.assertEqual(self.api.set_theme("light"), "light")
+
+    def test_a_nonsense_theme_falls_back_to_auto(self):
+        self.api.set_theme("dark")
+        self.assertEqual(self.api.set_theme("neon"), "auto")
+        self.assertEqual(self.api.get_state()["theme"], "auto")
+
+    def test_saving_the_theme_keeps_the_remembered_game_folders(self):
+        self.settings.set_game_dir("genshin", "/the/game")
+        self.api.set_theme("dark")
+        self.assertEqual(self.settings.game_dir("genshin"), "/the/game")
+        self.settings.set_game_dir("hsr", "/hsr")
+        self.assertEqual(self.settings.theme(), "dark")
 
     # ---- 状态 ----
     def test_state_lists_all_games_in_order_with_their_accounts(self):

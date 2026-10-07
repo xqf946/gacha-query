@@ -5,7 +5,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
-#define MyAppName "原神抽卡记录"
+#define MyAppName "抽卡查询"
 #define MyAppExe "GenshinWishLog.exe"
 
 [Setup]
@@ -39,6 +39,11 @@ Source: "..\dist\GenshinWishLog\*"; DestDir: "{app}"; Flags: recursesubdirs igno
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
+
+; 旧版本的快捷方式叫「原神抽卡记录」，升级时清掉，免得开始菜单和桌面上出现两个
+[InstallDelete]
+Type: files; Name: "{autoprograms}\原神抽卡记录.lnk"
+Type: files; Name: "{autodesktop}\原神抽卡记录.lnk"
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "立即运行 {#MyAppName}"; Flags: nowait postinstall skipifsilent

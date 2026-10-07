@@ -1,4 +1,4 @@
-# 抽卡记录（原神 · 崩铁 · 绝区零 · 鸣潮 · 明日方舟 · 终末地 · Windows 桌面软件）
+# 抽卡查询（原神 · 崩铁 · 绝区零 · 鸣潮 · 明日方舟 · 终末地 · Windows 桌面软件）
 
 一个自带窗口的桌面软件：读取你电脑上游戏留下的记录链接，取回官方的抽卡记录，在本机统计保底、出金，并长期保存。一个软件查多个游戏。
 
@@ -63,6 +63,7 @@
 
 ## 功能
 
+- 外观有浅色和深色两套配色：默认跟着系统走，也可以点左侧栏底部的「外观」手动切换（跟随系统 → 浅色 → 深色），软件会记住你的选择
 - 六个游戏分开统计，每个游戏的卡池、品级（绝区零是 S/A/B，明日方舟和终末地最高六星）、货币（原石/星琼/菲林/星声）都按各自的规则显示
 - 终末地的**免费抽（加急招募）不计入保底**，单独列出；奖励类条目（寻访情报书、赠礼）不算抽卡，不进统计
 - 终末地的武器池、明日方舟的限定寻访：保底不跨期继承，换一期卡池就从头算
@@ -99,6 +100,7 @@
 | 明日方舟：账号令牌无效或已经过期 | 重新登录官网，再复制一遍页面上的内容（B 服账号用 `.../account/info/ak-b` 那个网址） |
 | 明日方舟：没有绑定明日方舟角色 | 确认复制令牌用的网址和你的服务器对应（官服 `hg`，B 服 `ak-b`） |
 | 链接已经失效 | 同上：重新打开一次记录页再更新 |
+| 终末地：官方没有接受日志里的凭证（后面括号里是官方的原话） | 在游戏里重新打开「寻访」→「寻访记录」，过几秒再更新。软件会依次试日志里最近的几条链接；如果只有「查询账号」被拒绝、记录接口认这个凭证，记录会先放在「账号 0」下，之后能取到 UID 时自动并入。仍然不行，点「高级」→「环境检测」，把结果和提示里括号内的内容一起发给开发者（都不含令牌） |
 | 读取缓存或日志失败（Permission denied） | 先完全退出游戏再试；如果游戏是以管理员身份运行的，软件也要用管理员身份运行 |
 | 官方接口提示访问过于频繁 | 等几分钟再试 |
 
@@ -119,7 +121,8 @@ pip install -r requirements.txt
 python run.py                 # 打开软件窗口
 python run.py --demo          # 用演示数据预览界面（不碰真实记录）
 python -m unittest discover -s . -p "test_*.py" -t .   # 跑测试（假接口 + 假缓存/日志 + 假对话框）
-python tools/make_icon.py     # 重新生成图标
+python tools/make_icon_from_image.py 图片 --box 左 上 右 下   # 用一张图片重新生成图标（需要 pip install pillow）
+python tools/make_icon.py     # 改回原来纯代码画的星形图标
 ```
 
 打包由 GitHub Actions 完成（`.github/workflows/build-windows.yml`）：在真正的 Windows 上跑测试、打包、**真的打开软件做自检**、截图、生成安装包和免安装压缩包。给仓库打上和 `wishlog/__init__.py` 里版本号一致的标签（例如 `v0.3.0`），就会自动发布 Release。
@@ -134,4 +137,4 @@ python tools/make_icon.py     # 重新生成图标
 - `wishlog/job.py` 后台更新任务（单个游戏 / 更新全部）；`wishlog/store.py` 本地存储与去重、旧数据迁移
 - `wishlog/stats.py` 保底与出金统计；`wishlog/api.py` 界面调用的全部后台方法；`wishlog/exporting.py` 导出
 - `wishlog/app.py` 窗口外壳（创建窗口、WebView2 检查、自检）；`wishlog/paths.py` 数据目录；`wishlog/settings.py` 小设置
-- `wishlog/static/index.html` 界面；`installer/GenshinWishLog.iss` 安装包脚本；`assets/` 图标；`tools/make_icon.py` 图标生成器
+- `wishlog/static/index.html` 界面；`installer/GenshinWishLog.iss` 安装包脚本；`assets/` 图标；`tools/` 两个图标生成器（图片版和星形版）
