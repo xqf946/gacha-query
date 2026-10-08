@@ -50,6 +50,48 @@ def analyze(game: Game, records: list, pool_names: dict | None = None) -> list:
     return [analyze_pool(game, p, _chronological(grouped[p.key])) for p in [*game.pools, *extra]]
 
 
+def ten_pull_stats(records: list, ranks) -> dict:
+    """十连统计。同一次十连的 10 条记录时间相同，所以把时间相同、恰好 10 条的一组当作一次十连。
+
+    top2 / second2：十连里出了 2 个及以上（包括 3 个、4 个……）最高档 / 次高档的次数。
+    """
+    batches = top2 = second2 = 0
+    i, n = 0, len(records)
+    while i < n:
+        j = i
+        while j < n and records[j]["time"] == records[i]["time"]:
+            j += 1
+        if j - i == 10:
+            batches += 1
+            tops = sum(1 for r in records[i:j] if int(r["rank_type"]) == ranks.top)
+            seconds = sum(1 for r in records[i:j] if int(r["rank_type"]) == ranks.second)
+            top2 += tops >= 2
+            second2 += seconds >= 2
+        i = j
+    return {"ten_pulls": batches, "ten_top2": top2, "ten_second2": second2}
+
+
+def lose_stats(entries: list) -> dict:
+    """“歪”的概率：在没有大保底的最高档里，出了常驻角色的比例。entries 要从旧到新。
+
+    一次歪了，下一个最高档就是大保底（必定是 UP），它不算一次“50/50”，所以不计入分母。
+    """
+    guaranteed = False
+    eligible = lost = 0
+    for e in entries:
+        if e["tier"] != "top":
+            continue
+        if guaranteed:
+            guaranteed = False
+            continue
+        eligible += 1
+        if e["standard"]:
+            lost += 1
+            guaranteed = True
+    return {"lose_eligible": eligible, "lose_count": lost,
+            "lose_rate": round(lost / eligible * 100, 1) if eligible else None}
+
+
 def analyze_pool(game: Game, pool: Pool, records: list) -> dict:
     """records 必须按时间从旧到新排好。"""
     ranks = game.ranks
@@ -104,6 +146,7 @@ def analyze_pool(game: Game, pool: Pool, records: list) -> dict:
 
     top_pities = [e["pity"] for e in entries if e["tier"] == "top" and not e["free"]]
     total = len(records)
+    has_standard = bool(game.standard and pool.key in game.standard.pool_keys)
     return {
         "key": pool.key,
         "name": pool.name,
@@ -120,6 +163,8 @@ def analyze_pool(game: Game, pool: Pool, records: list) -> dict:
         "min_pity_top": min(top_pities) if top_pities else None,
         "max_pity_top": max(top_pities) if top_pities else None,
         "standard_count": sum(1 for e in entries if e["standard"]),
+        **ten_pull_stats(records, ranks),
+        **(lose_stats(entries) if has_standard else {"lose_eligible": 0, "lose_count": 0, "lose_rate": None}),
         "cost": (total - free_count) * game.cost_per_pull if game.cost_per_pull else None,
         "records": entries[::-1],
     }

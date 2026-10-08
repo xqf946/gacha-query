@@ -12,6 +12,7 @@
     --top: #b7791f; --top-bg: #fbf0d9; --second: #7048c7; --second-bg: #efe8fb; --other: #5d6b7a;
     --good: #2f855a; --warn: #b7791f; --bad: #c53030; --track: #ece9e0;
     --ok-bg: #e6f4ea; --err-bg: #fdeaea; --info-bg: #e8eefc; --warn-bg: #fdf3dc;
+    --pill: #ffffff;
   }
   /* 外观：默认跟随系统；用户在侧栏点「外观」手动选了浅色/深色时，html 上会有 data-theme。
      下面两处深色变量必须一模一样（有测试检查）。 */
@@ -22,6 +23,7 @@
       --top: #f2c14e; --top-bg: #3a3119; --second: #b79cf5; --second-bg: #2d2640; --other: #8d9aa8;
       --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
       --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45; --warn-bg: #3a3119;
+      --pill: #3c3c44;
     }
   }
   :root[data-theme="light"] { color-scheme: light; }
@@ -32,12 +34,13 @@
     --top: #f2c14e; --top-bg: #3a3119; --second: #b79cf5; --second-bg: #2d2640; --other: #8d9aa8;
     --good: #68d391; --warn: #f2c14e; --bad: #fc8181; --track: #34343b;
     --ok-bg: #1b3326; --err-bg: #3b2020; --info-bg: #202a45; --warn-bg: #3a3119;
+    --pill: #3c3c44;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* 自己写的 display 样式不能把 hidden 的元素又显示出来 */
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font: clamp(15px, 0.45vw + 10.5px, 18px)/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;   /* 窗口越大字越大一点 */
   }
   button, select, input, textarea {
     font: inherit; color: var(--ink); background: var(--card);
@@ -52,20 +55,28 @@
   .muted { color: var(--muted); font-size: 13px; }
 
   /* ---- 整体布局：左侧游戏列表 + 右侧内容 ---- */
-  .app { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
-  .side { background: var(--side); padding: 18px 12px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line);
+  .app { display: grid; grid-template-columns: clamp(232px, 21vw, 340px) 1fr; min-height: 100vh; }
+  .side { background: var(--side); padding: 18px 12px 90px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line);
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }   /* 固定在窗口左边 */
   .brand { font-weight: 700; font-size: 16px; padding: 2px 8px 12px; letter-spacing: .5px; }
-  .game { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 11px 12px; min-height: 60px; font-size: 16px; }
-  .game img { width: 38px; height: 38px; border-radius: 22%; flex: none; display: block; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
-  .game .gname { flex: 1; min-width: 0; }
+  #games { position: relative; display: flex; flex-direction: column; gap: 6px; }
+  .game { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 11px 12px; min-height: 60px; font-size: 1.07em; }
+  .game img { width: clamp(38px, 1.5vw + 24px, 50px); height: clamp(38px, 1.5vw + 24px, 50px); border-radius: 22%; flex: none; display: block; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .game .gname { flex: 1; min-width: 0; font-weight: 500; opacity: .72; transition: opacity .3s; }
   .game small { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .game[aria-current="true"] { background: var(--card); border-color: var(--line); font-weight: 600; }
+  .game:hover:not(:disabled) { border-color: transparent; background: rgba(128,128,128,.12); }
+  .game[aria-current="true"] { background: transparent; }                   /* 选中靠下面滑动的高亮块，字不加粗 */
+  .game[aria-current="true"] .gname { opacity: 1; }
+  /* 滑动的高亮块：侧栏里是灰/白色圆角块，卡池标签里是反色的药丸；位置和大小由脚本设置，换选项时平滑滑过去 */
+  .pill { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
+          transition: transform .38s cubic-bezier(.4, 0, .2, 1), width .38s cubic-bezier(.4, 0, .2, 1), height .38s cubic-bezier(.4, 0, .2, 1); }
+  #games .pill { background: var(--pill); border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .tabs .pill { background: var(--ink); border-radius: 999px; }
   .side .spacer { flex: 1; }
-  .main { padding: 20px 20px 50px; min-width: 0; max-width: 980px; }
+  .main { padding: 20px clamp(16px, 2.6vw, 56px) 70px; min-width: 0; }   /* 不再限制最大宽度：窗口拉宽，内容跟着变宽 */
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
   h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; line-height: 0; }
-  h1 img { width: 52px; height: 52px; border-radius: 22%; display: block; box-shadow: 0 2px 8px rgba(0,0,0,.28); }
+  h1 img { width: clamp(52px, 2.4vw + 28px, 76px); height: clamp(52px, 2.4vw + 28px, 76px); border-radius: 22%; display: block; box-shadow: 0 2px 8px rgba(0,0,0,.28); }
 
   #status { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; display: none; white-space: pre-line; }
   #status.show { display: block; }
@@ -84,10 +95,11 @@
   .guide { display: grid; gap: 8px; }
   .guide p { margin: 4px 0 0; font-size: 14px; line-height: 1.6; color: var(--ink); }
   .guide p.fine { font-size: 12px; color: var(--muted); }
-  .urlrow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 14px; }
+  .urlrow { display: flex; align-items: center; gap: 10px; width: fit-content; max-width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 14px; }
   .urlrow .where { flex: none; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; }
-  .urlrow code { flex: 1; min-width: 0; font: 600 16px/1.4 ui-monospace, Consolas, "Cascadia Mono", monospace; color: var(--ink); word-break: break-all; user-select: all; }
-  .urlrow button { flex: none; padding: 7px 16px; font-weight: 600; }
+  .urlrow code { min-width: 0; font: 600 16px/1.4 ui-monospace, Consolas, "Cascadia Mono", monospace; color: var(--ink); word-break: break-all; user-select: all; }
+  .urlrow button { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; }
+  .urlrow button svg { width: 18px; height: 18px; }
   .urlrow button.done { border-color: var(--good); color: var(--good); }
   .need-input { border-color: var(--warn); }
   #report { width: 100%; min-height: 150px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; display: none; }
@@ -97,13 +109,13 @@
   .empty ol { padding-left: 20px; margin: 10px 0; }
   .empty li { margin: 4px 0; }
 
-  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
-  .tab { border-radius: 999px; padding: 6px 14px; }
-  .tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .tabs { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+  .tab { position: relative; z-index: 1; border-radius: 999px; padding: 6px 14px; transition: color .3s, border-color .3s; }
+  .tab[aria-selected="true"] { background: transparent; color: var(--bg); border-color: transparent; }   /* 底下滑动的药丸就是它的背景 */
   .tab small { opacity: .7; margin-left: 4px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .stat { padding: 12px 14px; }
-  .stat .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .v { font-size: clamp(24px, 1.2vw + 12px, 32px); font-weight: 700; font-variant-numeric: tabular-nums; }
   .stat .k { color: var(--muted); font-size: 13px; }
   .pity { margin-bottom: 14px; }
   .pity .row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -116,10 +128,11 @@
   .tops { display: grid; gap: 2px; }
   .tops .item { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 44px; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .tops .item:last-child { border-bottom: 0; }
-  .tops .name { font-weight: 600; }
+  .tops .name { font-weight: 600; font-size: 1.2em; }
   .tops .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
   .tops .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
   .tops .num.good { color: var(--good); } .tops .num.warn { color: var(--warn); } .tops .num.bad { color: var(--bad); }
+  .tag.lose { background: var(--err-bg); color: var(--bad); font-weight: 700; font-size: 12px; padding: 1px 9px; }
   .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; font-weight: 500; }
   .filters { display: flex; gap: 8px; margin-bottom: 8px; }
   .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -136,8 +149,8 @@
   footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
   footer a { color: var(--accent); }
 
-  /* ---- 右下角：太阳 / 月亮，点一下切换浅色和深色 ---- */
-  .theme-fab { position: fixed; right: 20px; bottom: 20px; width: 46px; height: 46px; padding: 0; border-radius: 50%; z-index: 20;
+  /* ---- 左下角：太阳 / 月亮，点一下切换浅色和深色 ---- */
+  .theme-fab { position: fixed; left: 20px; bottom: 20px; width: 46px; height: 46px; padding: 0; border-radius: 50%; z-index: 20;
                display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0,0,0,.22); }
   .theme-fab svg { grid-area: 1 / 1; width: 24px; height: 24px; transition: transform .5s cubic-bezier(.4,0,.2,1), opacity .35s; }
   .theme-fab .sun { color: #e8a317; }
@@ -243,7 +256,7 @@ function el(tag, props = {}, ...kids) {
 }
 
 const state = { games: [], game: null, uid: null, data: null, pool: null, filter: "all", shown: 100,
-               running: false, autoOpenedFor: null, theme: "auto", page: 0, themeStamp: 0 };
+               running: false, autoOpenedFor: null, theme: "auto", page: 0, themeStamp: 0, pillMemo: {} };
 const PAGE = 20;       // 「全部记录」每页 20 条
 const ICON = (key) => `icons/${key}.png`;   // 各游戏的官方图标
 
@@ -283,6 +296,40 @@ function switchTheme(next) {
   // 万一动画没能跑起来、配色没换上：过一会儿补上（点得太快、又切换了一次的话就不补）
   setTimeout(() => { if (stamp === state.themeStamp && state.theme !== next) applyTheme(next); }, 1500);
 }
+
+// ---------- 滑动的高亮块（侧栏选中的游戏、卡池标签）：换选项时，高亮块从原来的位置平滑滑到新位置 ----------
+// 做法：选项每次都会重新生成，所以把高亮块上次的位置记在 state.pillMemo 里，新生成的块先放在旧位置，下一帧再放到新位置，交给 CSS 过渡去滑动。
+function placePill(box, target, memoKey, animate = true) {
+  const pill = box && box.querySelector(":scope > .pill");
+  if (!pill || !target) return;
+  const to = { x: target.offsetLeft, y: target.offsetTop, w: target.offsetWidth, h: target.offsetHeight };
+  const earlier = state.pillMemo[memoKey];
+  const from = animate && earlier ? earlier : to;
+  const put = (r) => {
+    pill.style.transform = `translate(${r.x}px, ${r.y}px)`;
+    pill.style.width = `${r.w}px`;
+    pill.style.height = `${r.h}px`;
+  };
+  put(from);
+  if (from !== to && JSON.stringify(from) !== JSON.stringify(to)) {
+    pill.getBoundingClientRect();                       // 让浏览器先按旧位置算一次样式，后面的改动才会有过渡
+    requestAnimationFrame(() => put(to));
+  }
+  state.pillMemo[memoKey] = to;
+}
+function placeGamesPill(animate = true) {
+  const box = $("#games");
+  placePill(box, box.querySelector('[aria-current="true"]'), "games", animate);
+}
+function placeTabsPill(animate = true) {
+  const box = $(".tabs");
+  if (box) placePill(box, box.querySelector('[aria-selected="true"]'), "tabs", animate);
+}
+let resizeTimer = 0;
+window.addEventListener("resize", () => {         // 窗口大小变了，高亮块要跟着对准（不要滑动效果）
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { placeGamesPill(false); placeTabsPill(false); }, 60);
+});
 
 // ---------- 开屏：整页跟随外观的底色，中间是软件图标；界面准备好后淡出 ----------
 const splashShownAt = performance.now();
@@ -340,11 +387,12 @@ function renderFooter(info) {
 }
 
 function renderGames() {
-  $("#games").replaceChildren(...state.games.map((g) => el("button", {
+  $("#games").replaceChildren(el("span", { class: "pill", "aria-hidden": "true" }), ...state.games.map((g) => el("button", {
     class: "game", "data-key": g.key, "aria-current": g.key === state.game ? "true" : "false",
     onclick: () => selectGame(g.key).catch(onFatal),
   }, el("img", { src: ICON(g.key), alt: "" }), el("span", { class: "gname" }, g.short_name),
      el("small", {}, g.uids.length ? `${g.uids.length} 个账号` : "未导入"))));
+  placeGamesPill();
 }
 
 async function selectGame(key, keepStatus = false) {
@@ -354,6 +402,7 @@ async function selectGame(key, keepStatus = false) {
   state.game = key;
   safeSet("game", key);
   state.pool = null; state.filter = "all"; state.data = null;
+  state.pillMemo.tabs = null;        // 换了游戏，卡池标签整套都变了，高亮块不用从旧位置滑过来
   const game = currentGame();
   const remembered = safeGet(`uid:${key}`);
   state.uid = game.uids.includes(remembered) ? remembered : game.uids[0] || null;
@@ -389,13 +438,16 @@ function applyManualField() {
   }
 }
 
-// 说明文字和网址：网址单独一行、字号大、右边有「复制」按钮，点一下就能复制
+// 说明文字和网址：网址单独一行、字号大、紧跟着一个「复制」图标按钮，点一下就能复制
+const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.2"/><path d="M5 15V6.2A2.2 2.2 0 0 1 7.2 4H16"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function renderGuide(items) {
   const box = $("#manual-guide");
   box.hidden = !items.length;
   box.replaceChildren(...items.map((item) => {
     if (item.kind === "url") {
-      const button = el("button", { type: "button", "aria-label": `复制 ${item.url}` }, "复制");
+      const button = el("button", { type: "button", title: "复制", "aria-label": `复制 ${item.url}` });
+      button.innerHTML = COPY_ICON;               // 固定的图标，不是来自后台的内容
       button.addEventListener("click", () => copyText(item.url, button));
       return el("div", { class: "urlrow" },
         item.label ? el("span", { class: "where" }, item.label) : "", el("code", {}, item.url), button);
@@ -414,9 +466,10 @@ async function copyText(text, button) {
     document.execCommand("copy");
     box.remove();
   }
-  button.textContent = "已复制 ✓";
+  button.innerHTML = CHECK_ICON;                  // 复制成功：图标变成一个对勾，一会儿再变回来
   button.classList.add("done");
-  setTimeout(() => { button.textContent = "复制"; button.classList.remove("done"); }, 1600);
+  button.title = "已复制";
+  setTimeout(() => { button.innerHTML = COPY_ICON; button.classList.remove("done"); button.title = "复制"; }, 1600);
 }
 
 function openAdvancedFor(game) {
@@ -547,12 +600,13 @@ function renderEmpty() {
 function render() {
   const pool = state.data.pools.find((p) => p.key === state.pool);
   $("#content").replaceChildren(renderTabs(), pool.total ? renderPool(pool) : el("p", { class: "muted" }, "这个卡池还没有记录。"));
+  placeTabsPill();
 }
 
 function renderTabs() {
   const visible = state.data.pools.filter((p) => p.total > 0);
   const pools = visible.length ? visible : state.data.pools;
-  return el("div", { class: "tabs", role: "tablist" }, pools.map((p) =>
+  return el("div", { class: "tabs", role: "tablist" }, el("span", { class: "pill", "aria-hidden": "true" }), pools.map((p) =>
     el("button", {
       class: "tab", role: "tab", "aria-selected": p.key === state.pool ? "true" : "false",
       onclick: () => { state.pool = p.key; state.filter = "all"; state.page = 0; render(); },
@@ -565,8 +619,8 @@ function pityLevel(pool, pity) {
   return pity > Math.round(pool.soft_pity * 0.75) ? "warn" : "good";
 }
 
-function stat(label, value) {
-  return el("div", { class: "card stat" }, el("div", { class: "v" }, String(value)), el("div", { class: "k" }, label));
+function stat(label, value, tip = "") {
+  return el("div", { class: "card stat", title: tip }, el("div", { class: "v" }, String(value)), el("div", { class: "k" }, label));
 }
 
 function renderPool(pool) {
@@ -580,6 +634,15 @@ function renderPool(pool) {
   if (g.has_cost && pool.cost != null) cards.push(stat(`约消耗${g.currency}`, pool.cost.toLocaleString()));
   if (pool.free_count) cards.push(stat("免费抽（不计保底）", pool.free_count));
   if (g.has_standard && pool.standard_count) cards.push(stat("出过常驻角色", pool.standard_count));
+  if (pool.lose_rate != null) {
+    cards.push(stat("歪常驻角色概率", `${pool.lose_rate}%`,
+      `没有大保底的${g.top_name}里，出了常驻角色的比例：${pool.lose_count} / ${pool.lose_eligible}（歪了之后的下一个是大保底，不算）`));
+  }
+  if (pool.ten_pulls) {
+    const tip = (name, n) => `共 ${pool.ten_pulls} 次十连，其中 ${n} 次一次出了 2 个及以上${name}（3 个、4 个也算）`;
+    cards.push(stat(`十连出 2+ 个${g.top_name}`, pool.ten_top2, tip(g.top_name, pool.ten_top2)),
+               stat(`十连出 2+ 个${g.second_name}`, pool.ten_second2, tip(g.second_name, pool.ten_second2)));
+  }
 
   const parts = [el("div", { class: "stats" }, cards)];
   if (pool.hard_pity) parts.push(renderPity(pool));
@@ -620,7 +683,7 @@ function renderTops(pool) {
       return el("div", { class: "item" },
         el("span", { class: "name" }, r.name,
           r.free ? el("span", { class: "tag", title: "免费抽（如加急招募）不计入保底" }, "免费") : "",
-          r.standard ? el("span", { class: "tag", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "常驻") : "",
+          r.standard ? el("span", { class: "tag lose", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "歪") : "",
           el("span", { class: "time" }, r.time)),
         el("div", { class: "bar" }, el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (r.pity / cap) * 100)}%` })),
         el("span", { class: `num ${level}` }, String(r.pity)));

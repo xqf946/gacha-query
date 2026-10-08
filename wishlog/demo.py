@@ -92,8 +92,8 @@ def _mihoyo_records(rng, game: Game, plan: list, start_id: int) -> list:
         for rank, name, kind, n in _simulate(rng, game, pool_key, count, hard, soft, weapon):
             records.append({
                 "id": str(start_id + offset * 1000 + n), "gacha_type": pool_key, "item_id": "",
-                "count": "1", "time": _when(n), "name": name, "item_type": kind, "rank_type": str(rank),
-            })
+                "count": "1", "time": _when(n, same_second=True), "name": name, "item_type": kind, "rank_type": str(rank),
+            })    # 十连的 10 条记录同一秒，和真实游戏一样
     return records
 
 

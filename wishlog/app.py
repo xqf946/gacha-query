@@ -191,14 +191,57 @@ def _interaction_checks(window) -> dict:
     checks["records_are_paged_by_20_with_arrows"] = bool(
         first_page and second_page and first_page[0] == 20 and second_page[0] == 20
         and first_page[1] != second_page[1] and second_page[2].startswith("第 2 /"))
-    # 明日方舟：三个网址各占一行、旁边有「复制」按钮，点一下会变成「已复制」
+    # 明日方舟：三个网址各占一行，每个网址后面紧跟一个「复制」图标按钮（不是文字，也不在最右边），点一下变成对勾
     run("document.querySelector('.game[data-key=arknights]').click(); 0")
     pause()
     rows = run("document.querySelectorAll('#manual-guide .urlrow').length")
+    layout = run("(() => { const row = document.querySelector('#manual-guide .urlrow'); const code = row.querySelector('code'); const b = row.querySelector('button');"
+                 "return [b.textContent.trim() === '', b.querySelectorAll('svg').length, b.getBoundingClientRect().left - code.getBoundingClientRect().right, "
+                 "document.querySelector('#manual-guide').textContent.includes('B 服账号用'), document.querySelector('#manual-guide .fine') === null]; })()")
     run("document.querySelector('#manual-guide .urlrow button').click(); 0")
     pause(0.5)
-    copied = run("document.querySelector('#manual-guide .urlrow button').textContent")
-    checks["token_page_urls_have_copy_buttons"] = bool(rows == 3 and copied and "已复制" in copied)
+    copied = run("document.querySelector('#manual-guide .urlrow button').classList.contains('done')")
+    checks["token_page_urls_have_copy_icons_right_after_them"] = bool(
+        rows == 3 and layout and layout[0] and layout[1] == 1 and layout[2] < 40 and not layout[3] and layout[4] and copied is True)
+    # 侧栏选中的游戏：灰/白色高亮块滑到它身上，字不加粗
+    run("document.querySelector('.game[data-key=hsr]').click(); 0")
+    pause(0.9)
+    slid = run("(() => { const sel = document.querySelector('#games [aria-current=true]'); const pill = document.querySelector('#games .pill');"
+               "const m = new DOMMatrix(getComputedStyle(pill).transform);"
+               "return [Math.abs(m.m42 - sel.offsetTop) < 2, Math.abs(pill.offsetHeight - sel.offsetHeight) < 2,"
+               "parseFloat(getComputedStyle(sel.querySelector('.gname')).fontWeight) < 600]; })()")
+    checks["sidebar_highlight_slides_and_text_is_not_bold"] = slid == [True, True, True]
+    # 卡池标签：反色的滑块滑到被点的那个标签上
+    run("document.querySelectorAll('.tab')[1].click(); 0")
+    pause(0.9)
+    tab_ok = run("(() => { const tab = document.querySelector('.tab[aria-selected=true]'); const pill = document.querySelector('.tabs .pill');"
+                 "const m = new DOMMatrix(getComputedStyle(pill).transform);"
+                 "return Math.abs(m.m41 - tab.offsetLeft) < 2 && Math.abs(pill.offsetWidth - tab.offsetWidth) < 2 && document.querySelectorAll('.tab').length > 1; })()")
+    checks["pool_tabs_have_a_sliding_highlight"] = tab_ok is True
+    # 外观按钮在左下角
+    checks["theme_button_is_bottom_left"] = run(
+        "(() => { const r = document.querySelector('#theme').getBoundingClientRect(); return r.left < 80 && r.top > innerHeight / 2; })()") is True
+    # 原神：歪的标记、歪的概率、十连出多个的次数
+    run("document.querySelector('.game[data-key=genshin]').click(); 0")
+    pause()
+    checks["genshin_shows_lose_tag_and_extra_stats"] = run(
+        "(() => { const labels = [...document.querySelectorAll('.stat .k')].map((k) => k.textContent);"
+        "const lose = document.querySelector('.tops .tag.lose');"
+        "return !!lose && lose.textContent === '歪' && labels.includes('歪常驻角色概率')"
+        " && labels.includes('十连出 2+ 个五星') && labels.includes('十连出 2+ 个四星'); })()") is True
+    # 窗口拉宽时内容跟着变宽（不再卡在一个最大宽度上）
+    try:
+        window.resize(1500, 820)
+    except Exception:
+        pass
+    pause(1.0)
+    checks["layout_follows_the_window_width"] = run(
+        "(() => { const main = document.querySelector('.main'); return getComputedStyle(main).maxWidth === 'none'"
+        " && main.getBoundingClientRect().right >= innerWidth - 80; })()") is True
+    try:
+        window.resize(1000, 680)
+    except Exception:
+        pass
     return checks
 
 

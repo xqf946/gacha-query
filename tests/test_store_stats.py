@@ -170,6 +170,63 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(Settings(path).game_dir("wuwa"), "D:/x")
 
 
+def batch(start: int, ranks: list, at: str, pool="301") -> list:
+    """一次十连：10 条记录，时间相同；ranks 是这 10 条各自的品级。"""
+    assert len(ranks) == 10
+    return [{**rec(start + i, pool, rank), "time": at} for i, rank in enumerate(ranks)]
+
+
+class TenPullStats(unittest.TestCase):
+    def stats(self, records, game=GENSHIN, key="301"):
+        return analyze_pool(game, next(p for p in game.pools if p.key == key), sorted(records, key=lambda r: (r["time"], int(r["id"]))))
+
+    def test_ten_pulls_with_two_or_more_top_or_second_ranks_are_counted(self):
+        records = (
+            batch(100, [3] * 8 + [5, 5], "2026-01-01 10:00:00")             # 两个五星
+            + batch(200, [3] * 7 + [5, 5, 5], "2026-01-02 10:00:00")        # 三个五星也算
+            + batch(300, [3] * 9 + [5], "2026-01-03 10:00:00")              # 只有一个
+            + batch(400, [3] * 6 + [4, 4, 4, 4], "2026-01-04 10:00:00")     # 四个四星
+            + batch(500, [3] * 9 + [4], "2026-01-05 10:00:00"))
+        r = self.stats(records)
+        self.assertEqual((r["ten_pulls"], r["ten_top2"], r["ten_second2"]), (5, 2, 1))
+
+    def test_single_pulls_and_odd_sized_groups_are_not_ten_pulls(self):
+        singles = [{**rec(i, "301", 5), "time": f"2026-02-01 00:{i:02d}:00"} for i in range(1, 6)]
+        nine = batch(100, [3] * 9 + [5], "2026-02-02 10:00:00")[:9]
+        r = self.stats(singles + nine)
+        self.assertEqual((r["ten_pulls"], r["ten_top2"], r["ten_second2"]), (0, 0, 0))
+
+    def test_it_works_for_a_game_whose_top_rank_is_six_stars(self):
+        records = batch(100, [2] * 8 + [5, 5], "2026-01-01 10:00:00", pool="normal")
+        r = self.stats(records, ARKNIGHTS, "normal")
+        self.assertEqual((r["ten_pulls"], r["ten_top2"]), (1, 1))
+
+
+class LoseStats(unittest.TestCase):
+    def rate(self, names):
+        """names：按时间从旧到新依次出的五星角色（“刻晴”是常驻，其他是 UP）。"""
+        records = [rec(i, "301", 5, name) for i, name in enumerate(names, 1)]
+        r = analyze(GENSHIN, records)[0]
+        return r["lose_eligible"], r["lose_count"], r["lose_rate"]
+
+    def test_a_loss_makes_the_next_five_star_a_guarantee_that_is_not_counted(self):
+        # 胡桃(赢) 刻晴(歪) 钟离(大保底，不计) 刻晴(歪) 胡桃(大保底，不计) 胡桃(赢)
+        self.assertEqual(self.rate(["胡桃", "刻晴", "钟离", "刻晴", "胡桃", "胡桃"]), (4, 2, 50.0))
+
+    def test_no_loss_means_zero_percent(self):
+        self.assertEqual(self.rate(["胡桃", "钟离"]), (2, 0, 0.0))
+
+    def test_no_five_stars_means_no_rate(self):
+        r = analyze(GENSHIN, [rec(1, "301", 4)])[0]
+        self.assertEqual((r["lose_eligible"], r["lose_rate"]), (0, None))
+
+    def test_pools_without_a_standard_list_have_no_rate(self):
+        r = analyze_pool(HSR, next(p for p in HSR.pools), [rec(1, "11", 5, "符玄")])
+        self.assertIsNone(r["lose_rate"])
+        r = analyze(GENSHIN, [rec(1, "200", 5, "刻晴")])
+        self.assertIsNone(next(p for p in r if p["key"] == "200")["lose_rate"])
+
+
 class StatsTests(unittest.TestCase):
     def pool(self, game, key, records):
         return analyze_pool(game, next(p for p in game.pools if p.key == key), records)

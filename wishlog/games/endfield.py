@@ -28,7 +28,7 @@ from ..locate import (
 )
 from ..net import default_transport, format_ts
 from .base import SIX_STARS, Game, Pool
-from .hg_account import HgAccount, fine, parse_account_token, text, url
+from .hg_account import HgAccount, parse_account_token, text, url
 
 WEB_HOST = "https://ef-webview.hypergryph.com"
 U8_HOST = "https://u8.hypergryph.com"
@@ -54,13 +54,12 @@ TOKEN_HELP = (
 
 
 TOKEN_GUIDE = (
-    text("软件会先试着从游戏日志里读凭证；官方可能已经调整了日志的写法，读不到或官方不认的话，请改用账号令牌（和明日方舟用的是同一个）："),
+    text("日志里的凭证读不到或官方不认时，请改用账号令牌（和明日方舟用的是同一个）："),
     text("① 用浏览器打开下面的网址，登录你的鹰角账号："),
     url("https://user.hypergryph.com/", "登录"),
     text("② 登录后，在同一个浏览器里打开下面的网址："),
     url("https://web-api.hypergryph.com/account/info/hg", "令牌"),
     text("③ 页面上会显示一段文字，整段复制，粘贴到上面的框里，再点「更新记录」。"),
-    fine("令牌相当于账号的钥匙：软件只在内存里用一次，不会保存，也只发给鹰角官方，但请不要把它发给别人，也不要贴到别的地方。也可以在这里粘贴一条寻访记录页面的链接。"),
 )
 
 
