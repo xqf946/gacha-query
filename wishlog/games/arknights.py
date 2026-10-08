@@ -21,7 +21,7 @@ from ..locate import NeedsInput
 from ..net import format_ts
 from . import hg_account
 from .base import ARKNIGHTS_RANKS, Game, Pool
-from .hg_account import HgAccount
+from .hg_account import HgAccount, fine, text, url
 
 AK_HOST = "https://ak.hypergryph.com"
 PAGE_SIZE = 50
@@ -37,11 +37,22 @@ TOKEN_HELP = (
 )
 
 
-def parse_account_token(text: str) -> str:
+TOKEN_GUIDE = (
+    text("① 用浏览器打开下面的网址，登录你的鹰角账号："),
+    url("https://ak.hypergryph.com/user/home", "官网"),
+    text("② 登录后，在同一个浏览器里打开下面的网址（官服账号用第一个，B 服账号用第二个）："),
+    url("https://web-api.hypergryph.com/account/info/hg", "官服"),
+    url("https://web-api.hypergryph.com/account/info/ak-b", "B 服"),
+    text("③ 页面上会显示一段文字，整段复制，粘贴到上面的框里，再点「更新记录」。"),
+    fine("令牌相当于账号的钥匙：软件只在内存里用一次，不会保存，也只发给鹰角官方，但请不要把它发给别人，也不要贴到别的地方。"),
+)
+
+
+def parse_account_token(token_text: str) -> str:
     """接受官网页面上的整段内容（JSON），或者单独的令牌。"""
-    if not text.strip():
+    if not token_text.strip():
         raise NeedsInput("原版明日方舟需要先粘贴账号令牌才能更新。\n" + TOKEN_HELP)
-    return hg_account.parse_account_token(text)
+    return hg_account.parse_account_token(token_text)
 
 
 class ArknightsClient(HgAccount):
@@ -188,4 +199,5 @@ ARKNIGHTS = ArknightsGame(
     hint="原版明日方舟没有本地文件可以读，需要先在「高级」里粘贴账号令牌（见下方说明）。",
     retention="一段时间内", trust_record_type=False,
     manual_label="账号令牌（必填）", manual_help=TOKEN_HELP, manual_secret=True, manual_required=True,
+    manual_guide=TOKEN_GUIDE,
 )

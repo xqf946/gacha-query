@@ -115,8 +115,8 @@ def _interaction_checks(window) -> dict:
         except Exception:
             return None
 
-    def pause() -> None:
-        time.sleep(0.6)
+    def pause(seconds: float = 0.6) -> None:
+        time.sleep(seconds)
 
     checks = {}
     # 上一次操作留下的提示条（“更新完成，新增 N 条记录”）不能带到别的游戏的页面上
@@ -144,24 +144,61 @@ def _interaction_checks(window) -> dict:
         time.sleep(0.4)
     pause()
     opened_after_failure = run("document.querySelector('details.adv').open") is True
-    shows_help = "账号令牌" in (run("document.querySelector('#manual-help').textContent") or "")
+    shows_help = "账号令牌" in (run("document.querySelector('#manual-guide').textContent") or "")
     run("document.querySelector('.game[data-key=genshin]').click(); 0")
     pause()
     closed_again = run("document.querySelector('details.adv').open") is False
     checks["advanced_opens_after_a_failed_update_when_a_token_can_help"] = bool(
         before is False and opened_after_failure and shows_help and closed_again)
-    # 侧栏的「外观」按钮：跟随系统 → 浅色 → 深色 → 回到跟随系统，每一步页面真的换了配色
-    seen = []
-    for _ in range(3):
-        run("document.querySelector('#theme').click(); 0")
-        pause()
-        seen.append(run("[document.documentElement.getAttribute('data-theme'), getComputedStyle(document.body).backgroundColor]"))
-    dark_bg = seen[1][1] if seen[1] else None
-    checks["appearance_button_cycles_light_dark_auto"] = bool(
-        seen[0] and seen[1] and seen[2]
-        and [seen[0][0], seen[1][0], seen[2][0]] == ["light", "dark", None]
-        and seen[0][1] != dark_bg
-    )
+    # 右下角的太阳/月亮：点一下在浅色和深色之间切换，页面底色真的跟着变；再点一下回来
+    probe = "[document.documentElement.dataset.mode, document.documentElement.getAttribute('data-theme'), getComputedStyle(document.body).backgroundColor]"
+    before = run(probe)
+    run("document.querySelector('#theme').click(); 0")
+    pause(1.3)                       # 切换有一个 0.65 秒的圆形扩散动画
+    flipped = run(probe)
+    run("document.querySelector('#theme').click(); 0")
+    pause(1.3)
+    back = run(probe)
+    checks["theme_button_flips_light_and_dark_and_back"] = bool(
+        before and flipped and back
+        and flipped[0] != before[0] and flipped[1] == flipped[0] and flipped[2] != before[2]
+        and back[0] == before[0] and back[2] == before[2])
+    checks["theme_button_is_an_icon_not_text"] = run(
+        "document.querySelector('#theme').textContent.trim() === '' && document.querySelectorAll('#theme svg').length === 2") is True
+    # 开屏淡出之后被移走；侧栏和页面顶部都用游戏的官方图标，并且图片真的加载出来了
+    deadline = time.time() + 12
+    while time.time() < deadline and run("document.querySelector('#splash') !== null") is True:
+        time.sleep(0.4)
+    checks["splash_goes_away"] = run("document.querySelector('#splash') === null") is True
+    checks["official_game_icons_load"] = run(
+        "(() => { const icons = [...document.querySelectorAll('.game img')]; "
+        "return icons.length === %d && icons.every((i) => i.complete && i.naturalWidth > 0) "
+        "&& document.querySelector('#title-logo').naturalWidth > 0; })()" % len(GAMES)) is True
+    # 主页的精简：没有「更新全部游戏」、统计里没有括号百分比、写「已垫」
+    run("document.querySelector('.game[data-key=genshin]').click(); 0")
+    pause()
+    checks["main_page_is_trimmed"] = run(
+        "document.querySelector('#sync-all') === null "
+        "&& [...document.querySelectorAll('.stat .k')].every((k) => !/[%％]/.test(k.textContent)) "
+        "&& document.querySelector('.pity .row span').textContent.startsWith('已垫') "
+        "&& document.querySelector('details.adv summary').textContent.trim() === '高级' "
+        "&& document.querySelector('#manual-guide').hidden === true") is True
+    # 「全部记录」每页 20 条，下面有翻页箭头
+    first_page = run("[document.querySelectorAll('tbody tr').length, document.querySelector('tbody tr td').textContent]")
+    run("document.querySelector('.pager button[aria-label=下一页]').click(); 0")
+    pause()
+    second_page = run("[document.querySelectorAll('tbody tr').length, document.querySelector('tbody tr td').textContent, document.querySelector('.pager .where').textContent]")
+    checks["records_are_paged_by_20_with_arrows"] = bool(
+        first_page and second_page and first_page[0] == 20 and second_page[0] == 20
+        and first_page[1] != second_page[1] and second_page[2].startswith("第 2 /"))
+    # 明日方舟：三个网址各占一行、旁边有「复制」按钮，点一下会变成「已复制」
+    run("document.querySelector('.game[data-key=arknights]').click(); 0")
+    pause()
+    rows = run("document.querySelectorAll('#manual-guide .urlrow').length")
+    run("document.querySelector('#manual-guide .urlrow button').click(); 0")
+    pause(0.5)
+    copied = run("document.querySelector('#manual-guide .urlrow button').textContent")
+    checks["token_page_urls_have_copy_buttons"] = bool(rows == 3 and copied and "已复制" in copied)
     return checks
 
 

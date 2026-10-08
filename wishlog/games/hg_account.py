@@ -21,6 +21,19 @@ from ..net import default_transport
 AS_HOST = "https://as.hypergryph.com"
 BINDING_HOST = "https://binding-api-account-prod.hypergryph.com"
 APP_CODE = "be36d44aa36bfb5b"            # 鹰角账号授权用的应用码；森空岛的授权码换不到寻访记录
+def text(content: str) -> dict:
+    return {"kind": "text", "text": content}
+
+
+def fine(content: str) -> dict:
+    return {"kind": "fine", "text": content}
+
+
+def url(address: str, label: str = "") -> dict:
+    """说明里的一个网址：界面上单独一行、字号大、右边有“复制”按钮。"""
+    return {"kind": "url", "url": address, "label": label}
+
+
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=_.\-%]{16,}$")
 _JSON_TOKEN_RE = re.compile(r'"(?:content|token)"\s*:\s*"([^"]+)"')
 

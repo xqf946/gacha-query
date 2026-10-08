@@ -65,7 +65,7 @@ class Game:
                  currency: str, hint: str, standard: Standard | None = None,
                  trust_record_type: bool = True, cost_per_pull: int | None = 160,
                  retention: str = "最近半年", manual_label: str = "", manual_help: str = "",
-                 manual_secret: bool = False, manual_required: bool = False):
+                 manual_secret: bool = False, manual_required: bool = False, manual_guide: tuple = ()):
         self.key = key
         self.name = name
         self.short_name = short_name
@@ -81,6 +81,7 @@ class Game:
         self.manual_help = manual_help
         self.manual_secret = manual_secret            # True：输入框按密码显示（令牌）
         self.manual_required = manual_required        # True：必须手动输入才能更新（没有本地文件可读）
+        self.manual_guide = manual_guide              # 界面上的图文说明：一串 text / fine / url 条目，url 条目带“复制”按钮
         self._by_type = {t: p for p in pools for t in p.types}
 
     def pool_for_type(self, gacha_type) -> Pool | None:
@@ -103,6 +104,7 @@ class Game:
             "manual_help": self.manual_help,
             "manual_secret": self.manual_secret,
             "manual_required": self.manual_required,
+            "manual_guide": [dict(item) for item in self.manual_guide],
         }
 
     # ---- 子类实现 ----

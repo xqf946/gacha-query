@@ -52,18 +52,20 @@
   .muted { color: var(--muted); font-size: 13px; }
 
   /* ---- 整体布局：左侧游戏列表 + 右侧内容 ---- */
-  .app { display: grid; grid-template-columns: 188px 1fr; min-height: 100vh; }
+  .app { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
   .side { background: var(--side); padding: 18px 12px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line);
-          position: sticky; top: 0; height: 100vh; overflow-y: auto; }   /* 固定在窗口左边，“更新全部”始终看得到 */
+          position: sticky; top: 0; height: 100vh; overflow-y: auto; }   /* 固定在窗口左边 */
   .brand { font-weight: 700; font-size: 16px; padding: 2px 8px 12px; letter-spacing: .5px; }
-  .game { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 9px 10px; }
+  .game { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 11px 12px; min-height: 60px; font-size: 16px; }
+  .game img { width: 38px; height: 38px; border-radius: 22%; flex: none; display: block; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .game .gname { flex: 1; min-width: 0; }
   .game small { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .game[aria-current="true"] { background: var(--card); border-color: var(--line); font-weight: 600; }
   .side .spacer { flex: 1; }
-  .theme-toggle { background: transparent; border-color: transparent; color: var(--muted); font-size: 13px; white-space: nowrap; }
   .main { padding: 20px 20px 50px; min-width: 0; max-width: 980px; }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
-  h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; }
+  h1 { font-size: 22px; margin: 0 auto 0 0; letter-spacing: .5px; line-height: 0; }
+  h1 img { width: 52px; height: 52px; border-radius: 22%; display: block; box-shadow: 0 2px 8px rgba(0,0,0,.28); }
 
   #status { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; display: none; white-space: pre-line; }
   #status.show { display: block; }
@@ -79,6 +81,14 @@
   #browse { white-space: nowrap; flex: none; }
   details.adv .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   pre.help { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13px; }
+  .guide { display: grid; gap: 8px; }
+  .guide p { margin: 4px 0 0; font-size: 14px; line-height: 1.6; color: var(--ink); }
+  .guide p.fine { font-size: 12px; color: var(--muted); }
+  .urlrow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 14px; }
+  .urlrow .where { flex: none; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; }
+  .urlrow code { flex: 1; min-width: 0; font: 600 16px/1.4 ui-monospace, Consolas, "Cascadia Mono", monospace; color: var(--ink); word-break: break-all; user-select: all; }
+  .urlrow button { flex: none; padding: 7px 16px; font-weight: 600; }
+  .urlrow button.done { border-color: var(--good); color: var(--good); }
   .need-input { border-color: var(--warn); }
   #report { width: 100%; min-height: 150px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; display: none; }
   #report.show { display: block; }
@@ -120,32 +130,57 @@
   tr.top td.nm { color: var(--top); font-weight: 700; } tr.top { background: var(--top-bg); }
   tr.second td.nm { color: var(--second); font-weight: 600; } tr.second { background: var(--second-bg); }
   tr.other td.nm { color: var(--other); }
-  .more { display: block; margin: 12px auto 0; }
+  .pager { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .pager button { min-width: 40px; font-size: 18px; line-height: 1; padding: 8px 12px; }
+  .pager .where { min-width: 130px; text-align: center; font-variant-numeric: tabular-nums; }
   footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
   footer a { color: var(--accent); }
+
+  /* ---- 右下角：太阳 / 月亮，点一下切换浅色和深色 ---- */
+  .theme-fab { position: fixed; right: 20px; bottom: 20px; width: 46px; height: 46px; padding: 0; border-radius: 50%; z-index: 20;
+               display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0,0,0,.22); }
+  .theme-fab svg { grid-area: 1 / 1; width: 24px; height: 24px; transition: transform .5s cubic-bezier(.4,0,.2,1), opacity .35s; }
+  .theme-fab .sun { color: #e8a317; }
+  .theme-fab .moon { color: var(--accent); }
+  :root[data-mode="light"] .theme-fab .moon, :root[data-mode="dark"] .theme-fab .sun { opacity: 0; transform: rotate(-90deg) scale(.4); }
+  :root[data-mode="light"] .theme-fab .sun, :root[data-mode="dark"] .theme-fab .moon { opacity: 1; transform: none; }
+
+  /* 切换外观时，新配色从左下角以一个圆形扩散开（动画本身在脚本里），这里只是去掉浏览器默认的淡入淡出 */
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+  ::view-transition-old(root) { z-index: 1; } ::view-transition-new(root) { z-index: 2; }
+
+  /* ---- 开屏：整页跟随当前外观的底色，中间是软件图标 ---- */
+  #splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: var(--bg);
+            transition: opacity .5s ease, background-color .25s; }
+  #splash.leaving { opacity: 0; pointer-events: none; }
+  #splash img { width: 128px; height: 128px; border-radius: 22%; box-shadow: 0 10px 40px rgba(0,0,0,.3);
+                animation: splash-in .8s cubic-bezier(.2,.8,.2,1) both, splash-breathe 2.2s ease-in-out .8s infinite; }
+  @keyframes splash-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+  @keyframes splash-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  @media (prefers-reduced-motion: reduce) { #splash img { animation: none; } .theme-fab svg { transition: none; } }
 
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
     .side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; position: static; height: auto; }
     .brand, .side .spacer { display: none; }
-    .game { width: auto; white-space: nowrap; }
+    .game { width: auto; white-space: nowrap; min-height: 0; padding: 8px 12px; }
+    .game small { display: none; }
   }
   @media (max-width: 520px) { .tops .item { grid-template-columns: 1fr 44px; } .tops .bar { grid-column: 1 / -1; order: 3; } }
 </style>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><img src="icons/app.png" alt=""></div>
 <div class="app">
   <aside class="side">
     <div class="brand">抽卡查询</div>
     <nav id="games"></nav>
     <div class="spacer"></div>
-    <button id="sync-all" title="依次检查每个游戏，没装的会自动跳过">更新全部游戏</button>
-    <button id="theme" class="theme-toggle" type="button" title="点一下切换：跟随系统 → 浅色 → 深色">外观：跟随系统</button>
   </aside>
 
   <div class="main">
     <header>
-      <h1 id="title">抽卡查询</h1>
+      <h1 id="title" aria-label="抽卡查询"><img id="title-logo" src="icons/app.png" alt=""></h1>
       <select id="uid" aria-label="选择账号" hidden></select>
       <button id="export-csv" hidden>导出 CSV</button>
       <button id="export-json" hidden>导出 JSON</button>
@@ -155,7 +190,7 @@
     <div id="status" role="status" aria-live="polite"></div>
 
     <details class="adv">
-      <summary>高级：自动找不到时手动指定 / 环境检测</summary>
+      <summary>高级</summary>
       <div class="fields">
         <label id="dir-field">当前游戏的安装目录（自动找不到时才需要）
           <span class="pick">
@@ -164,14 +199,13 @@
           </span>
         </label>
         <label>
-          <span id="manual-label">或者直接粘贴记录链接（填了这个就不去读游戏文件）</span>
+          <span id="manual-label">粘贴记录链接</span>
           <input id="manual-url" placeholder="https://…" autocomplete="off" spellcheck="false">
         </label>
-        <pre id="manual-help" class="muted help"></pre>
+        <div id="manual-guide" class="guide" hidden></div>
         <div class="tools">
           <button id="diagnose" type="button">环境检测</button>
           <button id="copy-report" type="button" hidden>复制检测结果</button>
-          <span class="muted">检查每个游戏的安装、缓存/日志、链接是否找到；结果里不含任何密钥，可以发给开发者排查问题。</span>
         </div>
         <textarea id="report" readonly aria-label="环境检测结果"></textarea>
       </div>
@@ -181,6 +215,16 @@
     <footer id="footer" class="muted"></footer>
   </div>
 </div>
+
+<button id="theme" class="theme-fab" type="button" aria-label="切换深色或浅色" title="切换深色 / 浅色">
+  <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.2" fill="currentColor"/>
+    <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7L7 17M17 7l1.7-1.7"/>
+  </svg>
+  <svg class="moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M20.2 14.6A8.4 8.4 0 0 1 9.4 3.8a.6.6 0 0 0-.8-.7 9.4 9.4 0 1 0 12.3 12.3.6.6 0 0 0-.7-.8z"/>
+  </svg>
+</button>
 
 <script>
 const $ = (sel) => document.querySelector(sel);
@@ -199,32 +243,67 @@ function el(tag, props = {}, ...kids) {
 }
 
 const state = { games: [], game: null, uid: null, data: null, pool: null, filter: "all", shown: 100,
-               running: false, autoOpenedFor: null, theme: "auto" };
-const PAGE = 100;
+               running: false, autoOpenedFor: null, theme: "auto", page: 0, themeStamp: 0 };
+const PAGE = 20;       // 「全部记录」每页 20 条
+const ICON = (key) => `icons/${key}.png`;   // 各游戏的官方图标
 
 // 后台方法由软件窗口注入：window.pywebview.api.<方法名>(...)，返回 Promise
 const inApp = () => !!(window.pywebview && window.pywebview.api);
 const call = (name, ...args) => window.pywebview.api[name](...args);
 const currentGame = () => state.games.find((g) => g.key === state.game);
 
-// ---------- 外观：跟随系统 / 浅色 / 深色 ----------
+// ---------- 外观：右下角的太阳/月亮，一键在浅色和深色之间切换 ----------
+// state.theme 有三种：auto（默认，跟随系统）、light、dark；点按钮后就是明确的浅色或深色，并记下来。
 const THEMES = ["auto", "light", "dark"];
-const THEME_NAMES = { auto: "跟随系统", light: "浅色", dark: "深色" };
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+const effectiveTheme = () => (state.theme === "auto" ? (systemDark.matches ? "dark" : "light") : state.theme);
+
 function applyTheme(theme) {
   state.theme = THEMES.includes(theme) ? theme : "auto";
   if (state.theme === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.dataset.theme = state.theme;
-  $("#theme").textContent = `外观：${THEME_NAMES[state.theme]}`;
+  document.documentElement.dataset.mode = effectiveTheme();      // 决定右下角显示太阳还是月亮
+}
+systemDark.addEventListener("change", () => applyTheme(state.theme));
+
+// 切换时：新配色从左下角以一个圆形慢慢放大，盖住旧配色（浏览器不支持这个动画就直接切换）
+const REVEAL_FROM = "0px 100%";
+function switchTheme(next) {
+  const stamp = ++state.themeStamp;
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!document.startViewTransition || calm) { applyTheme(next); return; }
+  try {
+    const radius = Math.hypot(window.innerWidth, window.innerHeight);
+    const transition = document.startViewTransition(() => applyTheme(next));
+    transition.ready.then(() => document.documentElement.animate(
+      { clipPath: [`circle(0px at ${REVEAL_FROM})`, `circle(${radius}px at ${REVEAL_FROM})`] },
+      { duration: 650, easing: "cubic-bezier(.4, 0, .2, 1)", pseudoElement: "::view-transition-new(root)" },
+    )).catch(() => {});
+  } catch { applyTheme(next); }
+  // 万一动画没能跑起来、配色没换上：过一会儿补上（点得太快、又切换了一次的话就不补）
+  setTimeout(() => { if (stamp === state.themeStamp && state.theme !== next) applyTheme(next); }, 1500);
 }
 
+// ---------- 开屏：整页跟随外观的底色，中间是软件图标；界面准备好后淡出 ----------
+const splashShownAt = performance.now();
+function hideSplash() {
+  const splash = $("#splash");
+  if (!splash) return;
+  const wait = Math.max(0, 1200 - (performance.now() - splashShownAt));   // 至少让人看清 1.2 秒
+  setTimeout(() => { splash.classList.add("leaving"); setTimeout(() => splash.remove(), 600); }, wait);
+}
+setTimeout(hideSplash, 9000);   // 不管出什么状况，开屏最多停 9 秒，不会一直挡着
+
 function onFatal(e) {
+  hideSplash();
   setRunning(false);
   setStatus("error", `出错了：${(e && e.message) || e}`);
 }
 
 // 这个页面只能在软件的窗口里用；如果被人直接拿浏览器打开，就没有后台可以调用
 function renderNotInApp() {
-  $("#sync").disabled = $("#sync-all").disabled = true;
+  hideSplash();
+  $("#sync").disabled = true;
   $("#uid").hidden = $("#export-csv").hidden = $("#export-json").hidden = true;
   setStatus("error", "这个页面需要在「抽卡查询」软件的窗口里使用，不能直接用浏览器打开。");
   $("#content").replaceChildren(el("section", { class: "card empty" },
@@ -250,6 +329,7 @@ async function init() {
   state.game = (state.games.find((g) => g.key === remembered) || firstWithData || state.games[0]).key;
   if (st.sync.state === "running") { setRunning(true); poll(); }
   await selectGame(state.game);
+  hideSplash();
 }
 
 function renderFooter(info) {
@@ -263,7 +343,8 @@ function renderGames() {
   $("#games").replaceChildren(...state.games.map((g) => el("button", {
     class: "game", "data-key": g.key, "aria-current": g.key === state.game ? "true" : "false",
     onclick: () => selectGame(g.key).catch(onFatal),
-  }, g.short_name, el("small", {}, g.uids.length ? `${g.uids.length} 个账号` : "未导入"))));
+  }, el("img", { src: ICON(g.key), alt: "" }), el("span", { class: "gname" }, g.short_name),
+     el("small", {}, g.uids.length ? `${g.uids.length} 个账号` : "未导入"))));
 }
 
 async function selectGame(key, keepStatus = false) {
@@ -276,7 +357,10 @@ async function selectGame(key, keepStatus = false) {
   const game = currentGame();
   const remembered = safeGet(`uid:${key}`);
   state.uid = game.uids.includes(remembered) ? remembered : game.uids[0] || null;
-  $("#title").textContent = game.name;
+  $("#title-logo").src = ICON(game.key);       // 页面顶部不写游戏名，直接用它的官方图标
+  $("#title-logo").alt = game.name;
+  $("#title").setAttribute("aria-label", game.name);
+  $("#title").title = game.name;
   $("#game-dir").value = "";
   applyManualField();
   renderGames();
@@ -293,8 +377,9 @@ function applyManualField() {
   input.placeholder = g.manual_secret ? "粘贴官网页面上显示的整段文字" : "https://…";
   input.classList.toggle("need-input", !!g.manual_required);
   $("#dir-field").hidden = !!g.manual_required;       // 没有本地文件可读的游戏，不需要选安装目录
-  $("#manual-label").textContent = g.manual_label || "或者直接粘贴记录链接（填了这个就不去读游戏文件）";
-  $("#manual-help").textContent = g.manual_help || "记录链接相当于一把有时效的钥匙，别发给不信任的人。";
+  $("#manual-label").textContent = g.manual_label || "粘贴记录链接";
+  renderGuide(g.manual_guide && g.manual_guide.length ? g.manual_guide
+    : (g.manual_help ? g.manual_help.split("\n").map((line) => ({ kind: "text", text: line })) : []));
   // 明日方舟必须手动粘贴令牌，切到它时自动展开「高级」；离开它时再收起，别一直开着占地方。
   // 只收起“程序自己展开的”，用户自己展开或收起的，不去打扰。
   if (g.manual_required) openAdvancedFor(g);
@@ -302,6 +387,36 @@ function applyManualField() {
     $("details.adv").open = false;
     state.autoOpenedFor = null;
   }
+}
+
+// 说明文字和网址：网址单独一行、字号大、右边有「复制」按钮，点一下就能复制
+function renderGuide(items) {
+  const box = $("#manual-guide");
+  box.hidden = !items.length;
+  box.replaceChildren(...items.map((item) => {
+    if (item.kind === "url") {
+      const button = el("button", { type: "button", "aria-label": `复制 ${item.url}` }, "复制");
+      button.addEventListener("click", () => copyText(item.url, button));
+      return el("div", { class: "urlrow" },
+        item.label ? el("span", { class: "where" }, item.label) : "", el("code", {}, item.url), button);
+    }
+    return el("p", { class: item.kind === "fine" ? "fine" : "" }, item.text);
+  }));
+}
+
+async function copyText(text, button) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {   // 剪贴板接口不可用时的备用办法
+    const box = el("textarea", { style: "position:fixed;opacity:0" });
+    box.value = text;
+    document.body.append(box);
+    box.select();
+    document.execCommand("copy");
+    box.remove();
+  }
+  button.textContent = "已复制 ✓";
+  button.classList.add("done");
+  setTimeout(() => { button.textContent = "复制"; button.classList.remove("done"); }, 1600);
 }
 
 function openAdvancedFor(game) {
@@ -322,7 +437,7 @@ async function loadWishes() {
   const data = await call("get_wishes", state.game, state.uid);
   if (data.error) { setStatus("error", data.error); return; }
   state.data = data;
-  state.shown = PAGE;
+  state.page = 0;
   const visible = data.pools.filter((p) => p.total > 0);
   if (!visible.some((p) => p.key === state.pool)) state.pool = (visible[0] || data.pools[0]).key;
   render();
@@ -331,7 +446,7 @@ async function loadWishes() {
 // ---------- 更新 ----------
 function setRunning(running) {
   state.running = running;
-  $("#sync").disabled = $("#sync-all").disabled = running;
+  $("#sync").disabled = running;
   $("#sync").textContent = running ? "更新中…" : "更新记录";
 }
 
@@ -418,9 +533,9 @@ function renderEmpty() {
   const game = currentGame();
   const steps = game.manual_required
     ? [el("li", {}, "展开上面的「高级」，照说明拿到账号令牌，粘贴到框里。"),
-       el("li", {}, "点右上角的「更新记录」（这个游戏需要令牌，所以不能用「更新全部游戏」）。")]
+       el("li", {}, "点右上角的「更新记录」。")]
     : [el("li", {}, `打开${game.short_name}，${game.hint}`),
-       el("li", {}, "回到这里，点右上角的「更新记录」（只更新当前游戏），或左下角的「更新全部游戏」。")];
+       el("li", {}, "回到这里，点右上角的「更新记录」。")];
   $("#content").replaceChildren(el("section", { class: "card empty" },
     el("h2", {}, `还没有「${game.name}」的记录`),
     el("p", {}, "第一次使用，照下面做一遍："),
@@ -440,7 +555,7 @@ function renderTabs() {
   return el("div", { class: "tabs", role: "tablist" }, pools.map((p) =>
     el("button", {
       class: "tab", role: "tab", "aria-selected": p.key === state.pool ? "true" : "false",
-      onclick: () => { state.pool = p.key; state.filter = "all"; state.shown = PAGE; render(); },
+      onclick: () => { state.pool = p.key; state.filter = "all"; state.page = 0; render(); },
     }, p.name, el("small", {}, String(p.total)))));
 }
 
@@ -456,10 +571,9 @@ function stat(label, value) {
 
 function renderPool(pool) {
   const g = state.data.game;
-  const rate = pool.total ? ((pool.top_count / pool.total) * 100).toFixed(2) + "%" : "-";
   const cards = [
     stat("总抽数", pool.total),
-    stat(`${g.top_name}（${rate}）`, pool.top_count),
+    stat(g.top_name, pool.top_count),
     stat(g.second_name, pool.second_count),
     stat(`${g.top_name}平均抽数`, pool.avg_pity_top ?? "-"),
   ];
@@ -486,7 +600,7 @@ function renderPity(pool) {
     : "";
   return el("section", { class: "card pity" },
     el("div", { class: "row" },
-      el("span", {}, `距离上一个${g.top_name}已抽 `, el("b", {}, String(cur)), " 抽"),
+      el("span", {}, "已垫 ", el("b", {}, String(cur)), " 抽"),
       el("span", { class: "muted" }, `距硬保底还有 ${left} 抽 · ${g.second_name}已垫 ${pool.current_pity_second} 抽`)),
     el("div", { class: "bar", role: "img", "aria-label": `已垫 ${cur} / ${pool.hard_pity}` },
       el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (cur / pool.hard_pity) * 100)}%` }),
@@ -517,10 +631,12 @@ function renderTable(pool) {
   const g = state.data.game;
   const keep = { all: () => true, second: (r) => r.tier !== "other", top: (r) => r.tier === "top" }[state.filter];
   const rows = pool.records.filter(keep);
-  const shown = rows.slice(0, state.shown);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  state.page = Math.min(Math.max(0, state.page), pages - 1);
+  const shown = rows.slice(state.page * PAGE, (state.page + 1) * PAGE);
   const filterBtn = (key, label) => el("button", {
     "aria-pressed": state.filter === key ? "true" : "false",
-    onclick: () => { state.filter = key; state.shown = PAGE; render(); },
+    onclick: () => { state.filter = key; state.page = 0; render(); },
   }, label);
   return el("section", {},
     el("h2", { class: "sec" }, "全部记录"),
@@ -530,9 +646,23 @@ function renderTable(pool) {
       el("tbody", {}, shown.map((r) => el("tr", { class: r.tier },
         el("td", {}, String(r.n)), el("td", {}, r.time), el("td", { class: "nm" }, r.name),
         el("td", {}, r.item_type), el("td", {}, r.mark), el("td", {}, r.pity ?? "")))))),
-    rows.length > shown.length
-      ? el("button", { class: "more", onclick: () => { state.shown += PAGE; render(); } }, `显示更多（还有 ${rows.length - shown.length} 条）`)
-      : "");
+    pages > 1 ? renderPager(pages, rows.length) : "");
+}
+
+function renderPager(pages, total) {
+  const go = (page) => () => {
+    state.page = page;
+    render();
+    document.querySelector(".filters")?.scrollIntoView({ block: "start" });   // 翻页后回到表格上方，从第一行开始看
+  };
+  const arrow = (label, text, target, disabled) =>
+    el("button", { type: "button", "aria-label": label, title: label, disabled, onclick: go(target) }, text);
+  return el("div", { class: "pager" },
+    arrow("第一页", "«", 0, state.page === 0),
+    arrow("上一页", "‹", state.page - 1, state.page === 0),
+    el("span", { class: "where muted" }, `第 ${state.page + 1} / ${pages} 页 · 共 ${total} 条`),
+    arrow("下一页", "›", state.page + 1, state.page >= pages - 1),
+    arrow("最后一页", "»", pages - 1, state.page >= pages - 1));
 }
 
 // ---------- 其他 ----------
@@ -540,10 +670,9 @@ function safeGet(k) { try { return localStorage.getItem(k); } catch { return nul
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 隐私模式下可能不可用，忽略 */ } }
 
 $("#sync").addEventListener("click", () => startSync(state.game));
-$("#sync-all").addEventListener("click", () => startSync("all"));
 $("#theme").addEventListener("click", () => {
-  const next = THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
-  applyTheme(next);                                          // 先切换，立刻看到效果
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  switchTheme(next);                                         // 先切换，立刻看到效果
   if (inApp()) call("set_theme", next).catch(onFatal);       // 再记下来，下次打开还是这个
 });
 $("#uid").addEventListener("change", (e) => {
