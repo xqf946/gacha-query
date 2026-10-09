@@ -106,6 +106,9 @@ _PROBE = """(() => ({
 }))()"""
 
 
+SELFTEST_DETAILS: dict = {}     # 自检里某些检查的原始数值，写进自检结果，检查没过时方便看是哪一步出了问题
+
+
 def _interaction_checks(window) -> dict:
     """在真实窗口里点几下，检查切换游戏时界面状态不会串到别的游戏上。"""
 
@@ -282,6 +285,8 @@ def _interaction_checks(window) -> dict:
                      "return [fills.length, ok, delays.size]; })()")
     restarted = run("(() => { document.querySelector('.pager button[aria-label=下一页]').click();"          # 翻页后页面重新生成，条又是空的
                     "return [...document.querySelectorAll('.bar > i')].every((i) => i.getBoundingClientRect().width === 0); })()")
+    SELFTEST_DETAILS["bars"] = {"pity_grown": pity_grown, "tops_grown": tops_grown, "restarted": restarted,
+                                "viewport": run("[innerWidth, innerHeight, document.querySelector('.pity').getBoundingClientRect().top]")}
     checks["pity_bars_grow_left_to_right_one_by_one_and_restart_on_paging"] = bool(
         pity_grown is True and tops_grown and tops_grown[0] >= 2 and tops_grown[1] is True
         and tops_grown[2] == tops_grown[0] and restarted is True)
@@ -330,6 +335,7 @@ def _selftest(window, out_path: str) -> None:
         if data:
             result.update(data)
         result["checks"] = _interaction_checks(window) if data and data.get("tabs") else {}
+        result["details"] = SELFTEST_DETAILS
         result["ok"] = bool(
             data and data.get("bridge") and data.get("tabs") and len(data.get("games") or []) == len(GAMES)
             and result["checks"] and all(result["checks"].values())
