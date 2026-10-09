@@ -1,22 +1,22 @@
-﻿; Inno Setup 脚本：把 dist\GenshinWishLog 文件夹打成安装包。
-; 用法：ISCC.exe /DMyAppVersion=0.2.0 installer\GenshinWishLog.iss
+﻿; Inno Setup 脚本：把 dist\GachaQuery 文件夹打成安装包。
+; 用法：ISCC.exe /DMyAppVersion=0.2.0 installer\GachaQuery.iss
 ; 本文件以 UTF-8 (带 BOM) 保存，Inno Setup 才能正确显示中文。
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
 #define MyAppName "抽卡查询"
-#define MyAppExe "GenshinWishLog.exe"
+#define MyAppExe "GachaQuery.exe"
 
 [Setup]
 AppId={{E55F1A55-5CBC-4311-8E3B-EF57182406FA}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-DefaultDirName={autopf}\GenshinWishLog
+DefaultDirName={autopf}\GachaQuery
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=GenshinWishLog-Setup-{#MyAppVersion}
+OutputBaseFilename=GachaQuery-Setup-{#MyAppVersion}
 SetupIconFile=..\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExe}
 Compression=lzma2
@@ -34,16 +34,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："
 
 [Files]
-Source: "..\dist\GenshinWishLog\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "..\dist\GachaQuery\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
 
-; 旧版本的快捷方式叫「原神抽卡记录」，升级时清掉，免得开始菜单和桌面上出现两个
+; 旧版本的快捷方式叫「原神抽卡记录」、程序文件叫 GenshinWishLog.exe，升级时清掉，免得留下两份
+; （AppId 没变，所以升级会装回原来的文件夹；用户的记录在另一个文件夹里，不受影响）
 [InstallDelete]
 Type: files; Name: "{autoprograms}\原神抽卡记录.lnk"
 Type: files; Name: "{autodesktop}\原神抽卡记录.lnk"
+Type: files; Name: "{app}\GenshinWishLog.exe"
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "立即运行 {#MyAppName}"; Flags: nowait postinstall skipifsilent

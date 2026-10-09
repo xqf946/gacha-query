@@ -37,7 +37,7 @@ jobs:
 
       # onedir：一个文件夹，启动快、被杀毒软件误报的概率比“单文件 exe”低
       - name: Build app
-        run: pyinstaller --noconfirm --clean --onedir --windowed --name GenshinWishLog --icon assets/icon.ico --add-data "wishlog/static;wishlog/static" --collect-all webview run.py
+        run: pyinstaller --noconfirm --clean --onedir --windowed --name GachaQuery --icon assets/icon.ico --add-data "wishlog/static;wishlog/static" --collect-all webview run.py
 
       # 真的把软件打开：窗口要能创建，界面要能通过后台接口画出演示数据，才算通过
       - name: Self-test the built app
@@ -45,7 +45,7 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP "selftest.json"
           Remove-Item $out -ErrorAction SilentlyContinue
-          $p = Start-Process -FilePath ".\dist\GenshinWishLog\GenshinWishLog.exe" -ArgumentList "--selftest-out", $out -PassThru
+          $p = Start-Process -FilePath ".\dist\GachaQuery\GachaQuery.exe" -ArgumentList "--selftest-out", $out -PassThru
           if (-not $p.WaitForExit(120000)) {
             taskkill /F /T /PID $p.Id | Out-Null
             throw "Self-test timed out after 120s"
@@ -67,7 +67,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath ".\dist\GenshinWishLog\GenshinWishLog.exe" -ArgumentList "--demo" -PassThru
+          $p = Start-Process -FilePath ".\dist\GachaQuery\GachaQuery.exe" -ArgumentList "--demo" -PassThru
           Start-Sleep -Seconds 15
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
           $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
@@ -86,25 +86,25 @@ jobs:
 
       - name: Make portable zip
         shell: pwsh
-        run: Compress-Archive -Path dist\GenshinWishLog -DestinationPath "dist\GenshinWishLog-$env:APP_VERSION-portable.zip"
+        run: Compress-Archive -Path dist\GachaQuery -DestinationPath "dist\GachaQuery-$env:APP_VERSION-portable.zip"
 
       - name: Build installer
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" installer\GenshinWishLog.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" installer\GachaQuery.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GenshinWishLog
+          name: GachaQuery
           path: |
-            dist/GenshinWishLog-Setup-*.exe
-            dist/GenshinWishLog-*-portable.zip
+            dist/GachaQuery-Setup-*.exe
+            dist/GachaQuery-*-portable.zip
 
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/GenshinWishLog-Setup-*.exe, dist/GenshinWishLog-*-portable.zip) --title "${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/GachaQuery-Setup-*.exe, dist/GachaQuery-*-portable.zip) --title "${{ github.ref_name }}" --generate-notes

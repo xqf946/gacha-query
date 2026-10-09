@@ -1,6 +1,14 @@
-# 抽卡查询（原神 · 崩铁 · 绝区零 · 鸣潮 · 明日方舟 · 终末地 · Windows 桌面软件）
+# 抽卡查询 · Gacha Query
 
-一个自带窗口的桌面软件：读取你电脑上游戏留下的记录链接，取回官方的抽卡记录，在本机统计保底、出金，并长期保存。一个软件查多个游戏。
+**原神 · 崩坏：星穹铁道 · 绝区零 · 鸣潮 · 明日方舟 · 明日方舟：终末地** 的抽卡记录查询与统计工具（Windows 桌面软件）。
+
+一个自带窗口的桌面软件：读取你电脑上游戏留下的记录链接，取回官方的抽卡记录，在本机统计保底、出金、歪率、十连，并长期保存。一个软件查多个游戏，数据只存在你自己的电脑上。
+
+> **English:** Gacha Query is a Windows desktop app that fetches and analyzes your pull history for **Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Wuthering Waves, Arknights and Arknights: Endfield** (China servers). It reads the link your game leaves on your PC (or a token you paste in), then shows pity counters, five-star records, the rate of losing the 50/50, ten-pull stats and the full history. Everything is stored locally; nothing is uploaded to anyone but the official game servers. Download the installer from [Releases](https://github.com/xqf946/gacha-query/releases). The interface is in Chinese.
+
+**关键词 / Keywords：** 抽卡查询 · 抽卡记录 · 抽卡分析 · 祈愿记录 · 寻访记录 · 唤取记录 · 跃迁记录 · 保底 · 出金 · 歪率 · gacha · wish history · pull history · pity tracker · Genshin Impact · Honkai: Star Rail · Zenless Zone Zero · Wuthering Waves · Arknights · Arknights: Endfield
+
+*曾用名：原神抽卡记录（genshin-wish-log）。早期版本只支持原神，后来加入了其他游戏，所以改了名字；旧的下载链接和旧版本仍然有效。*
 
 支持的游戏（均为国服）：
 
@@ -10,15 +18,17 @@
 | 崩坏：星穹铁道 | 游戏目录下的网页缓存 |
 | 绝区零 | 游戏目录下的网页缓存 |
 | 鸣潮 | 游戏目录下的 `Client\Saved\Logs\Client.log`（加密日志，软件会自动解码） |
-| 明日方舟：终末地 | `C:\Users\你\AppData\LocalLow\Hypergryph\Endfield\sdklogs\HGWebview.log` |
+| 明日方舟：终末地 | **账号令牌**（推荐，做法见下面「终末地」一节）；也可以试读 `C:\Users\你\AppData\LocalLow\Hypergryph\Endfield\sdklogs\HGWebview.log`，但官方可能已不认日志里的令牌 |
 | 明日方舟（原版） | **没有本地文件可读**，需要你从官网复制一个账号令牌，粘贴进来（见下面的说明） |
 
 ## 安装和使用
 
-到 [Releases](https://github.com/xqf946/genshin-wish-log/releases) 页面下载：
+到 [Releases](https://github.com/xqf946/gacha-query/releases) 页面下载：
 
-- **`GenshinWishLog-Setup-x.y.z.exe`**：安装包。双击安装，会在开始菜单和桌面创建快捷方式，可以正常卸载。不需要管理员权限。
-- **`GenshinWishLog-x.y.z-portable.zip`**：免安装版。解压到一个固定的文件夹，双击里面的 `GenshinWishLog.exe` 即可。
+- **`GachaQuery-Setup-x.y.z.exe`**：安装包。双击安装，会在开始菜单和桌面创建快捷方式，可以正常卸载。不需要管理员权限。
+- **`GachaQuery-x.y.z-portable.zip`**：免安装版。解压到一个固定的文件夹，双击里面的 `GachaQuery.exe` 即可。
+
+> 说明：0.4.5 及以前的版本，文件名叫 `GenshinWishLog-…`，是同一个软件的旧名字。你的抽卡记录保存在 `%LOCALAPPDATA%\GenshinWishLog\data`（这个文件夹名没有改，所以升级后记录都还在）。
 
 使用：
 
@@ -146,4 +156,4 @@ python tools/make_icon.py     # 改回原来纯代码画的星形图标
 - `wishlog/job.py` 后台更新任务（单个游戏 / 更新全部）；`wishlog/store.py` 本地存储与去重、旧数据迁移
 - `wishlog/stats.py` 保底与出金统计；`wishlog/api.py` 界面调用的全部后台方法；`wishlog/exporting.py` 导出
 - `wishlog/app.py` 窗口外壳（创建窗口、WebView2 检查、自检）；`wishlog/paths.py` 数据目录；`wishlog/settings.py` 小设置
-- `wishlog/static/index.html` 界面；`installer/GenshinWishLog.iss` 安装包脚本；`assets/` 图标；`tools/` 两个图标生成器（图片版和星形版）和 `make_fonts.py`（把界面用的开源字体裁剪成小文件放进 `wishlog/static/fonts/`）
+- `wishlog/static/index.html` 界面；`installer/GachaQuery.iss` 安装包脚本；`assets/` 图标；`tools/` 两个图标生成器（图片版和星形版）和 `make_fonts.py`（把界面用的开源字体裁剪成小文件放进 `wishlog/static/fonts/`）
