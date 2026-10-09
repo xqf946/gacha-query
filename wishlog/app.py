@@ -286,7 +286,9 @@ def _interaction_checks(window) -> dict:
     restarted = run("(() => { document.querySelector('.pager button[aria-label=下一页]').click();"          # 翻页后页面重新生成，条又是空的
                     "return [...document.querySelectorAll('.bar > i')].every((i) => i.getBoundingClientRect().width === 0); })()")
     SELFTEST_DETAILS["bars"] = {"pity_grown": pity_grown, "tops_grown": tops_grown, "restarted": restarted,
-                                "viewport": run("[innerWidth, innerHeight, document.querySelector('.pity').getBoundingClientRect().top]")}
+                                "viewport": run("[innerWidth, innerHeight, document.querySelector('.pity').getBoundingClientRect().top]"),
+                                "delays": run("[...document.querySelectorAll('.tops .bar > i')].map((i) => getComputedStyle(i).transitionDelay)"),
+                                "reduced_motion": run("matchMedia('(prefers-reduced-motion: reduce)').matches")}
     checks["pity_bars_grow_left_to_right_one_by_one_and_restart_on_paging"] = bool(
         pity_grown is True and tops_grown and tops_grown[0] >= 2 and tops_grown[1] is True
         and tops_grown[2] == tops_grown[0] and restarted is True)
