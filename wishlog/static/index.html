@@ -189,7 +189,8 @@
                 animation: splash-in .8s cubic-bezier(.2,.8,.2,1) both, splash-breathe 2.2s ease-in-out .8s infinite; }
   @keyframes splash-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
   @keyframes splash-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-  @media (prefers-reduced-motion: reduce) { #splash img { animation: none; } .theme-fab svg { transition: none; } .bar > i { transition: none; } }
+  /* 系统里关了“动画效果”（有的电脑为了流畅会关）时，只停掉开屏图标一直循环的“呼吸”；点一下就结束的动画（条长出来、滑块、切换外观）照常播放，这是用户明确要的效果 */
+  @media (prefers-reduced-motion: reduce) { #splash img { animation: splash-in .8s cubic-bezier(.2,.8,.2,1) both; } }
 
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
@@ -303,8 +304,7 @@ systemDark.addEventListener("change", () => applyTheme(state.theme));
 const REVEAL_FROM = "0px 100%";
 function switchTheme(next) {
   const stamp = ++state.themeStamp;
-  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (!document.startViewTransition || calm) { applyTheme(next); return; }
+  if (!document.startViewTransition) { applyTheme(next); return; }
   try {
     const radius = Math.hypot(window.innerWidth, window.innerHeight);
     const transition = document.startViewTransition(() => applyTheme(next));

@@ -55,6 +55,15 @@ class Appearance(unittest.TestCase):
                     weight = int(found.group(1))
                     self.assertTrue(weight in (400, 500) or (special and weight in (600, 700)), f"{selector.strip()} {declaration.strip()}")
 
+    def test_one_shot_animations_still_play_when_the_system_has_animations_off(self):
+        """用户明确要这些动效，而有的电脑（和云端的测试机）会关掉系统动画：条长出来、切换外观不能因此就没了。"""
+        import re
+        blocks = re.findall(r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\}\s*\n", self.html)
+        for block in blocks:
+            self.assertNotIn(".bar", block)
+            self.assertNotIn("transition: none", block)
+        self.assertNotIn("(prefers-reduced-motion: reduce)\").matches", self.html.split("<script>")[1])   # 脚本里也不能因此跳过动画
+
     def test_the_picker_and_all_three_choices_exist(self):
         self.assertIn('id="theme"', self.html)
         self.assertIn('const THEMES = ["auto", "light", "dark"]', self.html)
