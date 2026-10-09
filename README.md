@@ -67,10 +67,11 @@
 
 - 打开软件时有一个开屏动画（整页跟随当前外观，中间是软件图标）；左侧每个游戏前面是它的官方图标，页面顶部也是
 - 外观有浅色和深色两套配色：默认跟着系统走，点左下角的太阳 / 月亮就能在浅色和深色之间切换（新配色从左下角以一个圆形扩散开），软件会记住你的选择
-- 「全部记录」每页 20 条，下面有翻页箭头
+- 保底的条（「已垫多少抽」和每个五星记录后面的红绿黄条）进入眼前时会各自从左往右长出来，同时出现的几根依次错开；翻页、换卡池重新显示时再长一遍
+- 「全部记录」每页 10 条，下面有翻页箭头
 - 明日方舟、终末地的「高级」里，要打开的网址都单独一行、字号大，网址后面有一个「复制」图标，点一下就复制
-- 左侧选中的游戏和每个游戏里的卡池标签，都有一块会滑动的高亮；窗口拉宽时内容会跟着变宽
-- 统计里除了总抽数、五星数等，还有「歪常驻角色概率」（只算没有大保底的五星里，出了常驻角色的比例，目前原神和鸣潮有）和「十连出 2+ 个五星 / 四星」（十连里一次出了 2 个及以上的次数，3 个、4 个也算）；五星记录里出了常驻角色的会标一个「歪」字
+- 左侧选中的游戏和每个游戏里的卡池标签，都有一块会从上一个选项滑到你点的选项上的高亮（卡池标签是「底板 + 滑块 + 文字」三层）；窗口拉宽时内容会跟着变宽
+- 统计里除了总抽数、五星数等，还有「歪常驻角色概率」（只算没有大保底的五星里，出了常驻角色的比例，目前原神和鸣潮有）和「十连双金」（十连里一次出了 2 个及以上最高档的次数，3 个、4 个也算）；五星记录里出了常驻角色的会标一个红色的「歪」字
 - 六个游戏分开统计，每个游戏的卡池、品级（绝区零是 S/A/B，明日方舟和终末地最高六星）、货币（原石/星琼/菲林/星声）都按各自的规则显示
 - 终末地的**免费抽（加急招募）不计入保底**，单独列出；奖励类条目（寻访情报书、赠礼）不算抽卡，不进统计
 - 终末地的武器池、明日方舟的限定寻访：保底不跨期继承，换一期卡池就从头算
@@ -115,6 +116,7 @@
 
 没有这些开源项目公开的做法，就没有这个软件。本项目都是用 Python 按自己的结构重新实现的，没有搬用它们的代码：
 
+- [思源黑体 / 思源宋体](https://github.com/notofonts/noto-cjk)（Adobe × Google）和[霞鹜文楷](https://github.com/lxgw/LxgwWenKai)（LXGW）：界面用的字体，都是 SIL OFL 1.1 开源协议，裁剪后随软件一起发布，协议原文在 `wishlog/static/fonts/`；裁剪用的工具是 `tools/make_fonts.py`
 - [Starward](https://github.com/Scighost/Starward)、[star-rail-warp-export](https://github.com/biuuu/star-rail-warp-export)、[genshin-wish-export](https://github.com/biuuu/genshin-wish-export)：米哈游游戏的缓存位置、接口地址、卡池编号，以及读缓存时需要的文件共享方式。
 - [bhaoo/endfield-gacha](https://github.com/bhaoo/endfield-gacha)、[RoLingG/endfield-gacha-app](https://github.com/RoLingG/endfield-gacha-app)、[AceDroidX/arknights-gacha-export](https://github.com/AceDroidX/arknights-gacha-export)（其中的 API.md 是根据真实接口响应整理的）、[Gordenghost/arklog](https://github.com/Gordenghost/arklog)：终末地和明日方舟的接口地址、请求参数、认证链、卡池类型和保底规则。
 - [wuwa-gagha-tool](https://github.com/juliy819/wuwa-gagha-tool)（Apache-2.0）：鸣潮加密日志的解码方式、记录页链接的格式、请求体字段、13 个卡池的编号，以及按“同一秒内第几条”给记录编号来去重的思路。
@@ -144,4 +146,4 @@ python tools/make_icon.py     # 改回原来纯代码画的星形图标
 - `wishlog/job.py` 后台更新任务（单个游戏 / 更新全部）；`wishlog/store.py` 本地存储与去重、旧数据迁移
 - `wishlog/stats.py` 保底与出金统计；`wishlog/api.py` 界面调用的全部后台方法；`wishlog/exporting.py` 导出
 - `wishlog/app.py` 窗口外壳（创建窗口、WebView2 检查、自检）；`wishlog/paths.py` 数据目录；`wishlog/settings.py` 小设置
-- `wishlog/static/index.html` 界面；`installer/GenshinWishLog.iss` 安装包脚本；`assets/` 图标；`tools/` 两个图标生成器（图片版和星形版）
+- `wishlog/static/index.html` 界面；`installer/GenshinWishLog.iss` 安装包脚本；`assets/` 图标；`tools/` 两个图标生成器（图片版和星形版）和 `make_fonts.py`（把界面用的开源字体裁剪成小文件放进 `wishlog/static/fonts/`）

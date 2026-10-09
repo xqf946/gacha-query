@@ -5,7 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>抽卡查询</title>
 <style>
+  /* 字体：思源黑体（正文）、思源宋体（大数字，只含数字和英文）、霞鹜文楷（角色名和标题）。都是 OFL 开源字体，
+     文件在 fonts/ 里；缺的极个别生僻字会自动退回系统字体。粗细只用文件里有的几档，免得浏览器硬加粗显得糊。 */
+  @font-face { font-family: "Noto Sans SC"; font-weight: 400; font-style: normal; font-display: block; src: url("fonts/NotoSansSC-Regular.woff2") format("woff2"); }
+  @font-face { font-family: "Noto Sans SC"; font-weight: 500; font-style: normal; font-display: block; src: url("fonts/NotoSansSC-Medium.woff2") format("woff2"); }
+  @font-face { font-family: "Noto Serif SC"; font-weight: 600; font-style: normal; font-display: block; src: url("fonts/NotoSerifSC-SemiBold.woff2") format("woff2"); }
+  @font-face { font-family: "LXGW WenKai"; font-weight: 700; font-style: normal; font-display: block; src: url("fonts/LXGWWenKai-Bold.woff2") format("woff2"); }
   :root {
+    --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    --font-num: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+    --font-name: "LXGW WenKai", "Kaiti SC", "KaiTi", "STKaiti", var(--font-ui);
     color-scheme: light dark;   /* 滚动条、下拉框这些系统控件也跟着变 */
     --bg: #f6f5f1; --card: #ffffff; --side: #ece9e0; --ink: #23221f; --muted: #6f6c64; --line: #e4e1d8;
     --accent: #3b5bdb; --accent-ink: #ffffff;
@@ -40,16 +49,17 @@
   [hidden] { display: none !important; }   /* 自己写的 display 样式不能把 hidden 的元素又显示出来 */
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: clamp(15px, 0.45vw + 10.5px, 18px)/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;   /* 窗口越大字越大一点 */
+    font: 400 clamp(15px, 0.45vw + 10.5px, 18px)/1.6 var(--font-ui);   /* 窗口越大字越大一点 */
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
   button, select, input, textarea {
-    font: inherit; color: var(--ink); background: var(--card);
+    font: inherit; font-weight: 500; color: var(--ink); background: var(--card);
     border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px;
   }
   button { cursor: pointer; }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .55; cursor: default; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
   .muted { color: var(--muted); font-size: 13px; }
@@ -58,7 +68,7 @@
   .app { display: grid; grid-template-columns: clamp(232px, 21vw, 340px) 1fr; min-height: 100vh; }
   .side { background: var(--side); padding: 18px 12px 90px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line);
           position: sticky; top: 0; height: 100vh; overflow-y: auto; }   /* 固定在窗口左边 */
-  .brand { font-weight: 700; font-size: 16px; padding: 2px 8px 12px; letter-spacing: .5px; }
+  .brand { font: 700 19px/1.3 var(--font-name); padding: 2px 8px 14px; letter-spacing: .08em; }
   #games { position: relative; display: flex; flex-direction: column; gap: 6px; }
   .game { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; border-color: transparent; background: transparent; padding: 11px 12px; min-height: 60px; font-size: 1.07em; }
   .game img { width: clamp(38px, 1.5vw + 24px, 50px); height: clamp(38px, 1.5vw + 24px, 50px); border-radius: 22%; flex: none; display: block; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
@@ -69,9 +79,9 @@
   .game[aria-current="true"] .gname { opacity: 1; }
   /* 滑动的高亮块：侧栏里是灰/白色圆角块，卡池标签里是反色的药丸；位置和大小由脚本设置，换选项时平滑滑过去 */
   .pill { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
-          transition: transform .38s cubic-bezier(.4, 0, .2, 1), width .38s cubic-bezier(.4, 0, .2, 1), height .38s cubic-bezier(.4, 0, .2, 1); }
+          transition: transform .42s cubic-bezier(.4, 0, .2, 1), width .42s cubic-bezier(.4, 0, .2, 1), height .42s cubic-bezier(.4, 0, .2, 1); }
   #games .pill { background: var(--pill); border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
-  .tabs .pill { background: var(--ink); border-radius: 999px; }
+  .tabs .pill { background: var(--ink); border-radius: 999px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
   .side .spacer { flex: 1; }
   .main { padding: 20px clamp(16px, 2.6vw, 56px) 70px; min-width: 0; }   /* 不再限制最大宽度：窗口拉宽，内容跟着变宽 */
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
@@ -105,47 +115,56 @@
   #report { width: 100%; min-height: 150px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; display: none; }
   #report.show { display: block; }
 
-  .empty h2 { margin: 0 0 8px; font-size: 18px; }
+  .empty h2 { margin: 0 0 8px; font: 700 1.35em/1.4 var(--font-name); letter-spacing: .04em; }
   .empty ol { padding-left: 20px; margin: 10px 0; }
   .empty li { margin: 4px 0; }
 
-  .tabs { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
-  .tab { position: relative; z-index: 1; border-radius: 999px; padding: 6px 14px; transition: color .3s, border-color .3s; }
-  .tab[aria-selected="true"] { background: transparent; color: var(--bg); border-color: transparent; }   /* 底下滑动的药丸就是它的背景 */
-  .tab small { opacity: .7; margin-left: 4px; }
+  /* 卡池标签：最底下是一块底板（深色模式下是黑的），白色（浅色模式下是黑色）的滑块在底板上方滑动，文字在最上面 */
+  .tabs { position: relative; display: flex; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; margin: 4px 0 14px; padding: 4px;
+          background: var(--card); border: 1px solid var(--line); border-radius: 26px; }
+  .tab { position: relative; z-index: 1; background: transparent; border-color: transparent; border-radius: 999px; padding: 6px 14px; transition: color .3s, background-color .2s; }
+  .tab:hover:not(:disabled) { border-color: transparent; }
+  .tab[aria-selected="false"]:hover { background: rgba(128,128,128,.16); }
+  .tab[aria-selected="true"] { color: var(--bg); }
+  .tab small { opacity: .7; margin-left: 4px; font-family: var(--font-num); font-weight: 600; font-size: .95em; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .stat { padding: 12px 14px; }
-  .stat .v { font-size: clamp(24px, 1.2vw + 12px, 32px); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .stat .k { color: var(--muted); font-size: 13px; }
+  .stat .v { font: 600 clamp(27px, 1.3vw + 14px, 36px)/1.2 var(--font-num); font-variant-numeric: lining-nums tabular-nums; letter-spacing: .01em; }
+  .stat .k { color: var(--muted); font-size: 13px; letter-spacing: .06em; margin-top: 2px; }
   .pity { margin-bottom: 14px; }
   .pity .row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
   .bar { position: relative; height: 10px; border-radius: 6px; background: var(--track); overflow: hidden; }
-  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--good); }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--good);
+             transition: width 1.1s cubic-bezier(.22, 1, .36, 1) var(--delay, 0ms); }   /* 从左往右长出来；每一根条有自己的延迟，错开先后 */
   .bar > i.warn { background: var(--warn); } .bar > i.bad { background: var(--bad); }
   .pity .bar { overflow: visible; }
   .pity .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted); opacity: .6; }
-  h2.sec { font-size: 16px; margin: 20px 0 10px; }
+  h2.sec { font: 700 1.2em/1.4 var(--font-name); letter-spacing: .06em; margin: 22px 0 10px; }
   .tops { display: grid; gap: 2px; }
   .tops .item { display: grid; grid-template-columns: minmax(110px, 1.2fr) 1fr 44px; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .tops .item:last-child { border-bottom: 0; }
-  .tops .name { font-weight: 600; font-size: 1.2em; }
-  .tops .time { color: var(--muted); font-size: 12px; display: block; font-weight: 400; }
-  .tops .num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tops .name { font: 700 1.32em/1.35 var(--font-name); letter-spacing: .04em; }
+  .tops .nm-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .nm-line .tag { margin-left: 0; line-height: 1.35; }
+  .tops .time { color: var(--muted); font: 600 13px/1.5 var(--font-num); letter-spacing: .02em; display: block; }
+  .tops .num { text-align: right; font: 600 1.45em/1.2 var(--font-num); font-variant-numeric: lining-nums tabular-nums; }
   .tops .num.good { color: var(--good); } .tops .num.warn { color: var(--warn); } .tops .num.bad { color: var(--bad); }
-  .tag.lose { background: var(--err-bg); color: var(--bad); font-weight: 700; font-size: 12px; padding: 1px 9px; }
-  .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; font-weight: 500; }
+  .tag.lose { background: var(--err-bg); color: var(--bad); font: 500 13px/1.35 var(--font-ui); padding: 2px 10px; }
+  .tag { font: 500 11px/1.4 var(--font-ui); padding: 1px 7px; border-radius: 999px; background: var(--track); color: var(--muted); margin-left: 6px; }
   .filters { display: flex; gap: 8px; margin-bottom: 8px; }
   .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
   .tablewrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 500; font-size: 13px; }
-  tr.top td.nm { color: var(--top); font-weight: 700; } tr.top { background: var(--top-bg); }
-  tr.second td.nm { color: var(--second); font-weight: 600; } tr.second { background: var(--second-bg); }
+  tr.top td.nm { color: var(--top); font-weight: 500; } tr.top { background: var(--top-bg); }
+  tr.second td.nm { color: var(--second); font-weight: 500; } tr.second { background: var(--second-bg); }
   tr.other td.nm { color: var(--other); }
   .pager { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  .pager button { min-width: 40px; font-size: 18px; line-height: 1; padding: 8px 12px; }
-  .pager .where { min-width: 130px; text-align: center; font-variant-numeric: tabular-nums; }
+  .pager { gap: 12px; }
+  .pager button { min-width: 60px; font-size: 27px; line-height: 1; padding: 12px 18px; }       /* 比之前大了 50%，按钮和里面的箭头都是 */
+  .pager .where { min-width: 160px; text-align: center; font-variant-numeric: tabular-nums; font-size: 1.05em; }
+  .pity b { font: 600 1.3em/1 var(--font-num); font-variant-numeric: lining-nums tabular-nums; margin: 0 .1em; }
   footer { margin-top: 28px; font-size: 12px; word-break: break-all; }
   footer a { color: var(--accent); }
 
@@ -170,7 +189,7 @@
                 animation: splash-in .8s cubic-bezier(.2,.8,.2,1) both, splash-breathe 2.2s ease-in-out .8s infinite; }
   @keyframes splash-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
   @keyframes splash-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-  @media (prefers-reduced-motion: reduce) { #splash img { animation: none; } .theme-fab svg { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #splash img { animation: none; } .theme-fab svg { transition: none; } .bar > i { transition: none; } }
 
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
@@ -187,7 +206,7 @@
 <div class="app">
   <aside class="side">
     <div class="brand">抽卡查询</div>
-    <nav id="games"></nav>
+    <nav id="games"><span class="pill" aria-hidden="true"></span></nav>
     <div class="spacer"></div>
   </aside>
 
@@ -224,6 +243,7 @@
       </div>
     </details>
 
+    <div id="tabs" class="tabs" role="tablist" hidden><span class="pill" aria-hidden="true"></span></div>
     <main id="content"></main>
     <footer id="footer" class="muted"></footer>
   </div>
@@ -256,8 +276,8 @@ function el(tag, props = {}, ...kids) {
 }
 
 const state = { games: [], game: null, uid: null, data: null, pool: null, filter: "all", shown: 100,
-               running: false, autoOpenedFor: null, theme: "auto", page: 0, themeStamp: 0, pillMemo: {} };
-const PAGE = 20;       // 「全部记录」每页 20 条
+               running: false, autoOpenedFor: null, theme: "auto", page: 0, themeStamp: 0, tabsGame: null };
+const PAGE = 10;       // 「全部记录」每页 10 条
 const ICON = (key) => `icons/${key}.png`;   // 各游戏的官方图标
 
 // 后台方法由软件窗口注入：window.pywebview.api.<方法名>(...)，返回 Promise
@@ -297,33 +317,31 @@ function switchTheme(next) {
   setTimeout(() => { if (stamp === state.themeStamp && state.theme !== next) applyTheme(next); }, 1500);
 }
 
-// ---------- 滑动的高亮块（侧栏选中的游戏、卡池标签）：换选项时，高亮块从原来的位置平滑滑到新位置 ----------
-// 做法：选项每次都会重新生成，所以把高亮块上次的位置记在 state.pillMemo 里，新生成的块先放在旧位置，下一帧再放到新位置，交给 CSS 过渡去滑动。
-function placePill(box, target, memoKey, animate = true) {
+// ---------- 滑动的高亮块（侧栏选中的游戏、卡池标签）----------
+// 滑块是页面上一直存在的同一个元素（选项按钮每次会重新生成，滑块不会），
+// 所以改它的位置时，CSS 过渡会让它从“当前所在的位置”平滑滑到“被点的那一项”。
+function placePill(box, target, animate = true) {
   const pill = box && box.querySelector(":scope > .pill");
   if (!pill || !target) return;
-  const to = { x: target.offsetLeft, y: target.offsetTop, w: target.offsetWidth, h: target.offsetHeight };
-  const earlier = state.pillMemo[memoKey];
-  const from = animate && earlier ? earlier : to;
-  const put = (r) => {
-    pill.style.transform = `translate(${r.x}px, ${r.y}px)`;
-    pill.style.width = `${r.w}px`;
-    pill.style.height = `${r.h}px`;
+  const apply = () => {
+    pill.style.transform = `translate(${target.offsetLeft}px, ${target.offsetTop}px)`;
+    pill.style.width = `${target.offsetWidth}px`;
+    pill.style.height = `${target.offsetHeight}px`;
   };
-  put(from);
-  if (from !== to && JSON.stringify(from) !== JSON.stringify(to)) {
-    pill.getBoundingClientRect();                       // 让浏览器先按旧位置算一次样式，后面的改动才会有过渡
-    requestAnimationFrame(() => put(to));
-  }
-  state.pillMemo[memoKey] = to;
+  if (animate && pill.dataset.placed) { apply(); return; }
+  pill.style.transition = "none";       // 第一次摆放，或者整套选项都换了：直接放到位，不滑动
+  apply();
+  pill.getBoundingClientRect();
+  pill.style.transition = "";
+  pill.dataset.placed = "1";
 }
 function placeGamesPill(animate = true) {
   const box = $("#games");
-  placePill(box, box.querySelector('[aria-current="true"]'), "games", animate);
+  placePill(box, box.querySelector('[aria-current="true"]'), animate);
 }
 function placeTabsPill(animate = true) {
-  const box = $(".tabs");
-  if (box) placePill(box, box.querySelector('[aria-selected="true"]'), "tabs", animate);
+  const box = $("#tabs");
+  if (!box.hidden) placePill(box, box.querySelector('[aria-selected="true"]'), animate);
 }
 let resizeTimer = 0;
 window.addEventListener("resize", () => {         // 窗口大小变了，高亮块要跟着对准（不要滑动效果）
@@ -335,9 +353,15 @@ window.addEventListener("resize", () => {         // 窗口大小变了，高亮
 const splashShownAt = performance.now();
 function hideSplash() {
   const splash = $("#splash");
-  if (!splash) return;
+  if (!splash || splash.dataset.leaving) return;
+  splash.dataset.leaving = "1";
+  // 等字体都加载好再淡出，免得进来的一瞬间字体“跳一下”；字体最多等 2.5 秒
+  const fontsReady = Promise.race([document.fonts.ready, new Promise((done) => setTimeout(done, 2500))]);
   const wait = Math.max(0, 1200 - (performance.now() - splashShownAt));   // 至少让人看清 1.2 秒
-  setTimeout(() => { splash.classList.add("leaving"); setTimeout(() => splash.remove(), 600); }, wait);
+  fontsReady.then(() => setTimeout(() => {
+    splash.classList.add("leaving");
+    setTimeout(() => { splash.remove(); startWaitingBars(); }, 600);       // 开屏完全淡出、露出界面之后，条才开始长
+  }, wait));
 }
 setTimeout(hideSplash, 9000);   // 不管出什么状况，开屏最多停 9 秒，不会一直挡着
 
@@ -387,7 +411,9 @@ function renderFooter(info) {
 }
 
 function renderGames() {
-  $("#games").replaceChildren(el("span", { class: "pill", "aria-hidden": "true" }), ...state.games.map((g) => el("button", {
+  const nav = $("#games");
+  nav.querySelectorAll(".game").forEach((b) => b.remove());
+  nav.append(...state.games.map((g) => el("button", {
     class: "game", "data-key": g.key, "aria-current": g.key === state.game ? "true" : "false",
     onclick: () => selectGame(g.key).catch(onFatal),
   }, el("img", { src: ICON(g.key), alt: "" }), el("span", { class: "gname" }, g.short_name),
@@ -402,7 +428,6 @@ async function selectGame(key, keepStatus = false) {
   state.game = key;
   safeSet("game", key);
   state.pool = null; state.filter = "all"; state.data = null;
-  state.pillMemo.tabs = null;        // 换了游戏，卡池标签整套都变了，高亮块不用从旧位置滑过来
   const game = currentGame();
   const remembered = safeGet(`uid:${key}`);
   state.uid = game.uids.includes(remembered) ? remembered : game.uids[0] || null;
@@ -583,6 +608,8 @@ async function copyReport() {
 
 // ---------- 渲染 ----------
 function renderEmpty() {
+  $("#tabs").hidden = true;
+  state.tabsGame = null;
   const game = currentGame();
   const steps = game.manual_required
     ? [el("li", {}, "展开上面的「高级」，照说明拿到账号令牌，粘贴到框里。"),
@@ -599,18 +626,23 @@ function renderEmpty() {
 
 function render() {
   const pool = state.data.pools.find((p) => p.key === state.pool);
-  $("#content").replaceChildren(renderTabs(), pool.total ? renderPool(pool) : el("p", { class: "muted" }, "这个卡池还没有记录。"));
-  placeTabsPill();
+  renderTabs();
+  $("#content").replaceChildren(pool.total ? renderPool(pool) : el("p", { class: "muted" }, "这个卡池还没有记录。"));
+  placeTabsPill(state.tabsGame === state.game);      // 同一个游戏里换卡池：滑过去；换了游戏：直接放到位
+  state.tabsGame = state.game;
 }
 
 function renderTabs() {
+  const box = $("#tabs");
   const visible = state.data.pools.filter((p) => p.total > 0);
   const pools = visible.length ? visible : state.data.pools;
-  return el("div", { class: "tabs", role: "tablist" }, el("span", { class: "pill", "aria-hidden": "true" }), pools.map((p) =>
+  box.querySelectorAll(".tab").forEach((b) => b.remove());
+  box.append(...pools.map((p) =>
     el("button", {
       class: "tab", role: "tab", "aria-selected": p.key === state.pool ? "true" : "false",
       onclick: () => { state.pool = p.key; state.filter = "all"; state.page = 0; render(); },
     }, p.name, el("small", {}, String(p.total)))));
+  box.hidden = false;
 }
 
 function pityLevel(pool, pity) {
@@ -633,15 +665,13 @@ function renderPool(pool) {
   ];
   if (g.has_cost && pool.cost != null) cards.push(stat(`约消耗${g.currency}`, pool.cost.toLocaleString()));
   if (pool.free_count) cards.push(stat("免费抽（不计保底）", pool.free_count));
-  if (g.has_standard && pool.standard_count) cards.push(stat("出过常驻角色", pool.standard_count));
   if (pool.lose_rate != null) {
     cards.push(stat("歪常驻角色概率", `${pool.lose_rate}%`,
       `没有大保底的${g.top_name}里，出了常驻角色的比例：${pool.lose_count} / ${pool.lose_eligible}（歪了之后的下一个是大保底，不算）`));
   }
   if (pool.ten_pulls) {
-    const tip = (name, n) => `共 ${pool.ten_pulls} 次十连，其中 ${n} 次一次出了 2 个及以上${name}（3 个、4 个也算）`;
-    cards.push(stat(`十连出 2+ 个${g.top_name}`, pool.ten_top2, tip(g.top_name, pool.ten_top2)),
-               stat(`十连出 2+ 个${g.second_name}`, pool.ten_second2, tip(g.second_name, pool.ten_second2)));
+    cards.push(stat("十连双金", pool.ten_top2,
+      `共 ${pool.ten_pulls} 次十连，其中 ${pool.ten_top2} 次一次出了 2 个及以上${g.top_name}（3 个、4 个也算）`));
   }
 
   const parts = [el("div", { class: "stats" }, cards)];
@@ -651,6 +681,38 @@ function renderPool(pool) {
     parts.push(el("p", { class: "muted" }, `本地记录最近一次新增：${state.data.updated_at.replace("T", " ")}`));
   }
   return el("div", {}, parts);
+}
+
+// 保底的条：先是空的，等它进入眼前（窗口可见范围）时才从左往右长到该有的长度。
+// 每一根条各自被观察、各自开始，所以翻页、换卡池、往下滚动时，看到哪几根，哪几根就各自动起来。
+const barWatcher = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const fill = entry.target.firstElementChild;
+        fill.style.width = fill.dataset.width;
+        barWatcher.unobserve(entry.target);
+      }
+    }, { threshold: 0.3 })
+  : null;
+
+const barsWaitingForSplash = [];      // 开屏还盖在上面的时候，条先不长（不然在开屏后面长完了，看不到）
+function startWaitingBars() {
+  while (barsWaitingForSplash.length) barWatcher && barWatcher.observe(barsWaitingForSplash.pop());
+}
+
+function bar(percent, level, order = 0, extra = {}, ...inside) {
+  const width = `${Math.max(0, Math.min(100, percent))}%`;
+  const fill = el("i", {
+    class: level === "good" ? "" : level, "data-width": width,
+    style: `width:${barWatcher ? "0" : width}; --delay:${Math.min(order, 7) * 110}ms`,   // 同时出现的几根条，依次晚 0.11 秒；最多错开 8 根
+  });
+  const box = el("div", { class: "bar", ...extra }, fill, ...inside);
+  if (barWatcher) {
+    if ($("#splash")) barsWaitingForSplash.push(box);
+    else barWatcher.observe(box);
+  }
+  return box;
 }
 
 function renderPity(pool) {
@@ -665,9 +727,7 @@ function renderPity(pool) {
     el("div", { class: "row" },
       el("span", {}, "已垫 ", el("b", {}, String(cur)), " 抽"),
       el("span", { class: "muted" }, `距硬保底还有 ${left} 抽 · ${g.second_name}已垫 ${pool.current_pity_second} 抽`)),
-    el("div", { class: "bar", role: "img", "aria-label": `已垫 ${cur} / ${pool.hard_pity}` },
-      el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (cur / pool.hard_pity) * 100)}%` }),
-      tick),
+    bar((cur / pool.hard_pity) * 100, level, 0, { role: "img", "aria-label": `已垫 ${cur} / ${pool.hard_pity}` }, tick),
   );
 }
 
@@ -678,14 +738,15 @@ function renderTops(pool) {
   const cap = pool.hard_pity || Math.max(...tops.map((r) => r.pity));
   return el("section", {},
     el("h2", { class: "sec" }, `${g.top_name}记录（从新到旧）`),
-    el("div", { class: "card tops" }, tops.map((r) => {
+    el("div", { class: "card tops" }, tops.map((r, order) => {
       const level = pityLevel(pool, r.pity);
       return el("div", { class: "item" },
-        el("span", { class: "name" }, r.name,
-          r.free ? el("span", { class: "tag", title: "免费抽（如加急招募）不计入保底" }, "免费") : "",
-          r.standard ? el("span", { class: "tag lose", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "歪") : "",
+        el("span", { class: "name" },
+          el("span", { class: "nm-line" }, r.name,
+            r.free ? el("span", { class: "tag", title: "免费抽（如加急招募）不计入保底" }, "免费") : "",
+            r.standard ? el("span", { class: "tag lose", title: "活动池里出了常驻角色，多半是歪了；但这些角色自己 UP 的复刻池里出了不算歪，这里无法区分" }, "歪") : ""),
           el("span", { class: "time" }, r.time)),
-        el("div", { class: "bar" }, el("i", { class: level === "good" ? "" : level, style: `width:${Math.min(100, (r.pity / cap) * 100)}%` })),
+        bar((r.pity / cap) * 100, level, order + 1),          // 第一根留给上面的总条，这些从第二个开始依次长出来
         el("span", { class: `num ${level}` }, String(r.pity)));
     })));
 }

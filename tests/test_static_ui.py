@@ -29,7 +29,31 @@ class Appearance(unittest.TestCase):
     def test_dark_overrides_every_colour_the_light_palette_defines(self):
         light = re.search(r":root \{(.*?)\}", self.html, re.S).group(1)
         auto, _ = self.dark_blocks()
-        self.assertEqual(set(variables(light)), set(auto))
+        colours = {name for name in variables(light) if not name.startswith("--font-")}      # 字体变量不用跟着深色模式变
+        self.assertEqual(colours, set(auto))
+
+    def test_every_bundled_font_is_there_and_its_license_ships_with_it(self):
+        import re
+        fonts = INDEX.parent / "fonts"
+        referenced = re.findall(r'url\("fonts/([^"]+)"\)', self.html)
+        self.assertGreaterEqual(len(referenced), 4)
+        for name in referenced:
+            self.assertGreater((fonts / name).stat().st_size, 5_000, name)
+        self.assertTrue(list(fonts.glob("OFL-*Noto*.txt")) and list(fonts.glob("OFL-*WenKai*.txt")))   # 开源协议要求带上原文
+
+    def test_only_weights_the_bundled_fonts_really_have_are_requested(self):
+        """黑体只带了 400 和 500 两档，宋体只有 600，文楷只有 700；要了别的粗细，浏览器就会硬把字加粗，看着糊。"""
+        import re
+        css = self.html.split("</style>")[0]
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            if "@font-face" in selector or "monospace" in body:
+                continue
+            special = "var(--font-num)" in body or "var(--font-name)" in body
+            for declaration in body.split(";"):
+                found = re.match(r"\s*font-weight:\s*(\w+)", declaration) or re.match(r"\s*font:\s*(\w+)\s", declaration)
+                if found and found.group(1).isdigit():
+                    weight = int(found.group(1))
+                    self.assertTrue(weight in (400, 500) or (special and weight in (600, 700)), f"{selector.strip()} {declaration.strip()}")
 
     def test_the_picker_and_all_three_choices_exist(self):
         self.assertIn('id="theme"', self.html)
